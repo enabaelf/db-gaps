@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("📊 GAPS ETF 대시보드 [V10 - 마스터 버전]")
-st.markdown("거래량 가중 모델 기반 수익률 최적화 및 기간별 성과 검증 시스템")
+st.title("📊 GAPS ETF 대시보드 [V11 - 순수 모멘텀 버전]")
+st.markdown("최근 4일 주가 변동폭 가중치(WMA) 및 20일 이평선 기반 수익률 최적화 시스템")
 
-@st.cache_data(ttl=21600, show_spinner="⏳ 전 종목 10년치 주가 분석 및 1달치 시뮬레이션 수행 중... (약 1분 소요)")
+@st.cache_data(ttl=21600, show_spinner="⏳ 전 종목 10년치 주가 분석 및 기간별 시뮬레이션 수행 중... (약 1분 소요)")
 def run_full_analysis(df_raw):
     ticker_dict = {}
     header_idx = -1
@@ -42,23 +42,23 @@ def run_full_analysis(df_raw):
 
     for ticker, info in ticker_dict.items():
         try:
-            df = fdr.DataReader(ticker, start_date, end_date)[['Close', 'Volume']].rename(columns={'Close': 'Price'})
+            df = fdr.DataReader(ticker, start_date, end_date)[['Close']].rename(columns={'Close': 'Price'})
             if len(df) < 40: continue
 
+            # [수정] 거래량 가중치 전면 제거 -> 순수 주가 변동폭만 사용
             df['Price_Change'] = df['Price'].pct_change()
-            df['Vol_MA20'] = df['Volume'].rolling(20).mean()
-            df['Vol_Ratio'] = np.clip(df['Volume'] / df['Vol_MA20'], 0.5, 3.0).fillna(1.0)
-            df['VW_Change'] = df['Price_Change'] * df['Vol_Ratio']
             
-            df['Weight_Score'] = (df['VW_Change'] * 0.4 + df['VW_Change'].shift(1) * 0.3 + 
-                                  df['VW_Change'].shift(2) * 0.2 + df['VW_Change'].shift(3) * 0.1)
+            # 순수 4일 선형 가중치 스코어 산출
+            df['Weight_Score'] = (df['Price_Change'] * 0.4 + df['Price_Change'].shift(1) * 0.3 + 
+                                  df['Price_Change'].shift(2) * 0.2 + df['Price_Change'].shift(3) * 0.1)
             
+            # 20일 이동평균선 장기 추세 필터
             df['MA20'] = df['Price'].rolling(20).mean()
             df['Trend'] = np.where(df['Price'] >= df['MA20'], "🟢상승세", "🔴하락세")
             df['Next_Return'] = df['Price_Change'].shift(-1)
             df_clean = df.dropna(subset=['Weight_Score'])
 
-            # 회귀 분석 (전체 데이터)
+            # 회귀 분석 (전체 데이터 기반 예측)
             df_for_pred = df_clean.dropna(subset=['Next_Return'])
             slope, intercept = np.polyfit(df_for_pred['Weight_Score'], df_for_pred['Next_Return'], 1)
             curr_score = df_clean['Weight_Score'].iloc[-1]
@@ -70,7 +70,7 @@ def run_full_analysis(df_raw):
             ret_2w = (df['Price'].iloc[-1] / df['Price'].iloc[-11] - 1) * 100 if len(df) >= 11 else 0
             ret_1m = (df['Price'].iloc[-1] / df['Price'].iloc[-21] - 1) * 100 if len(df) >= 21 else 0
 
-            # 시점별 모델 예측치 (과거 회귀선 기준)
+            # 시점별 모델 예측치 (과거 회귀선 기준 리얼 백테스트)
             def get_old_pred(days_ago):
                 df_past = df_clean.iloc[:-days_ago]
                 if len(df_past) < 20: return np.nan
@@ -142,7 +142,7 @@ if os.path.exists(csv_filename):
                 st.markdown(f"#### 👑 {period} 동안 실제 수익률 1위들")
                 st.dataframe(df_market_winners[['ETF명', f'ret_{p_code}', f'pred_{p_code}']].rename(columns={f'pred_{p_code}': '당시 예측치', f'ret_{p_code}': '실제 누적수익률'}).style.format({'당시 예측치': '{:.2f}%', '실제 누적수익률': '{:.2f}%'}), use_container_width=True)
 
-        # [탭 3] 종목 상세조회 (복구 완료!)
+        # [탭 3] 종목 상세조회
         with tab3:
             st.subheader("🔍 ETF 개별 종목 정밀 분석")
             target_etf = st.selectbox("종목을 선택하세요:", df_analysis['ETF명'].unique())
@@ -161,14 +161,14 @@ if os.path.exists(csv_filename):
                 st.line_chart(df_chart, use_container_width=True)
             except: st.error("차트를 불러올 수 없습니다.")
 
-        # [탭 4] 용어 가이드 (팀원 설명용)
+        # [탭 4] 용어 가이드
         with tab4:
             st.subheader("📖 대시보드 용어 및 원리 가이드")
             with st.expander("1. 마감 가중치 스코어 (Closing Weight Score)란?"):
-                st.write("단순히 올랐다 내렸다가 아니라, **거래량이 터지면서 강하게 움직인 날에 가중치**를 더 준 점수입니다. 최근 4일간의 에너지를 40%, 30%, 20%, 10% 비율로 합산하여 계산합니다.")
+                st.write("최근 4일간의 주가 변동폭에 각각 40%, 30%, 20%, 10%의 단기 선형 가중치를 주어 산출한 모멘텀 지수입니다.")
             with st.expander("2. 내일 기대 예측수익률 (Expected Return)이란?"):
-                st.write("과거 10년 동안 현재와 비슷한 '가중치 스코어'가 발생했을 때, **그다음 날 주가가 실제로 평균 몇 %나 움직였는지** 통계적으로 추정한 값입니다.")
+                st.write("과거 10년 데이터 중 현재 스코어와 유사한 지점에서 발생했던 다음 날 실제 수익률을 선형 회귀식으로 추정한 통계적 기댓값입니다.")
             with st.expander("3. 상관성 (Correlation)이란?"):
-                st.write("이 종목이 우리 모델의 예측을 얼마나 정직하게 잘 따르는지를 나타내는 수치입니다. **1에 가까울수록 모델이 예측한 대로 움직일 가능성이 높다는 신뢰의 지표**입니다.")
-            with st.expander("4. 성과 비교 탭은 어떻게 보나요?"):
-                st.write("과거 1주/2주/1달 전으로 돌아가서 '그 당시 모델의 눈'으로 종목을 뽑아보고, 그 종목들이 실제로 오늘까지 얼마나 수익을 냈는지 '진짜 정답'과 비교하는 공간입니다.")
+                st.write("해당 종목이 우리 모델의 가중치 예측선에 얼마나 잘 반응하는지 보여주는 지표로, 1에 가까울수록 신뢰도가 높습니다.")
+else:
+    st.sidebar.error(f"❌ `{csv_filename}` 파일을 찾을 수 없습니다.")
