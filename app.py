@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V14 - 대회 규정 최적화 엔진]")
+st.title("🥇 GAPS ETF 대시보드 [V15 - 오류 수정 및 안정화]")
 st.markdown("💡 위험자산(70%) 및 섹터별 투자 한도를 엄격히 준수하여 계좌 수익률을 극대화하는 **실전 비중 산출기**입니다.")
 
 # --- [핵심] 대회 룰 기반 포트폴리오 최적화 알고리즘 ---
@@ -20,6 +20,8 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
     total_budget = 100.0
     risk_budget = 70.0
     cat_alloc = {}
+    
+    has_actual = 'Actual' in df_predictions.columns
     
     for _, row in df_sorted.iterrows():
         if total_budget <= 0: break
@@ -61,7 +63,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
                 'ETF명': row['ETF명'], '카테고리': c_name, '자산군': asset_type,
                 '추천비중(%)': weight, '기대수익률(%)': row[target_col]
             }
-            if 'Actual' in row: item['실제수익률(%)'] = row['Actual']
+            if has_actual: item['실제수익률(%)'] = row['Actual']
             portfolio.append(item)
             
             total_budget -= weight
@@ -72,7 +74,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
     if total_budget > 0:
         portfolio.append({
             'ETF명': '현금보유 (Cash)', '카테고리': '현금', '자산군': '안전',
-            '추천비중(%)': total_budget, '기대수익률(%)': 0.0, '실제수익률(%)': 0.0 if 'Actual' in row else np.nan
+            '추천비중(%)': total_budget, '기대수익률(%)': 0.0, '실제수익률(%)': 0.0 if has_actual else np.nan
         })
         
     return pd.DataFrame(portfolio)
@@ -174,7 +176,65 @@ if os.path.exists(csv_filename):
             df_pred_today = df_analysis.rename(columns={'오늘 종가 기대수익률': 'Pred'})
             optimal_portfolio = optimize_portfolio(df_pred_today, target_col='Pred')
             
-            # 요약 정보 (위험/안전 자산 비중 체크)
-            risk_sum = optimal_portfolio[optimal_portfolio['자산군'] == '위험']['추천비중(%)'].sum()
-            safe_sum = optimal_portfolio[optimal_portfolio['자산군'] == '안전']['추천비중(%)'].sum()
-            expected_total_return = sum(optimal_portfolio['추천비중(%)']/100 * optimal_
+            # 요약 정보 (위험/안전 자산 비중 판다스 메서드로 안전하게 계산)
+            risk_sum = float(optimal_portfolio[optimal_portfolio['자산군'] == '위험']['추천비중(%)'].sum())
+            safe_sum = float(optimal_portfolio[optimal_portfolio['자산군'] == '안전']['추천비중(%)'].sum())
+            expected_total_return = float((optimal_portfolio['추천비중(%)'] / 100 * optimal_portfolio['기대수익률(%)'].fillna(0)).sum())
+            
+            m1, m2, m3 = st.columns(3)
+            m1.metric("🔴 편입 위험자산 총합 (Max 70%)", f"{risk_sum:.1f}%")
+            m2.metric("🟢 편입 안전자산 총합", f"{safe_sum:.1f}%")
+            m3.metric("✨ 포트폴리오 총 기대수익률", f"{expected_total_return:.3f}%")
+            
+            # 보기 좋게 표 형태로 출력
+            st.dataframe(optimal_portfolio[['자산군', '카테고리', 'ETF명', '추천비중(%)', '기대수익률(%)']].style.format({'추천비중(%)': '{:.1f}%', '기대수익률(%)': '{:.3f}%'}), use_container_width=True)
+
+        # [탭 2] 매일 교체매매 시뮬레이션 (최적화 엔진 적용)
+        with tab2:
+            st.subheader("🔥 규정 비율대로 매일 리밸런싱했을 때의 복리 수익률")
+            st.caption("과거로 돌아가서 '매일매일 위 탭의 알고리즘대로 분산 투자' 했다고 가정하고 계산된 찐 실전 성적표입니다.")
+            period = st.radio("시뮬레이션 기간:", ["1주 (5영업일)", "2주 (10영업일)", "1달 (20영업일)"], horizontal=True)
+            days = 5 if "1주" in period else (10 if "2주" in period else 20)
+            
+            if not df_daily.empty:
+                unique_dates = sorted(df_daily['Date'].unique())[-days:]
+                df_period = df_daily[df_daily['Date'].isin(unique_dates)]
+                
+                daily_model_returns, daily_market_returns, dates_list = [], [], []
+                
+                for d in unique_dates:
+                    df_d = df_period[df_period['Date'] == d]
+                    
+                    # 1. 과거 특정 일자의 예측치로 포트폴리오 분산 비율 계산
+                    past_portfolio = optimize_portfolio(df_d, target_col='Pred')
+                    
+                    # 2. 산출된 비율대로 실제 수익률 적용 (.sum() 메서드로 안전하게 처리)
+                    daily_port_return = float((past_portfolio['추천비중(%)'] / 100 * past_portfolio['실제수익률(%)'].fillna(0)).sum())
+                    
+                    daily_model_returns.append(daily_port_return / 100)
+                    daily_market_returns.append(float(df_d['Actual'].mean() / 100))
+                    dates_list.append(d)
+                
+                cum_model = (np.cumprod(1 + np.array(daily_model_returns)) - 1) * 100
+                cum_market = (np.cumprod(1 + np.array(daily_market_returns)) - 1) * 100
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric(f"🤖 {period}간 [대회 룰] 최적화 매매 누적", f"{cum_model[-1]:.2f}%")
+                c2.metric(f"📊 {period}간 시장 1/N 무지성 매매 누적", f"{cum_market[-1]:.2f}%")
+                c3.metric("알파(초과 수익률)", f"{(cum_model[-1] - cum_market[-1]):.2f}%")
+                
+                df_chart = pd.DataFrame({'🤖 룰 기반 최적화 포트폴리오': cum_model, '📊 시장 전체 1/N': cum_market}, index=dates_list)
+                st.line_chart(df_chart, use_container_width=True)
+
+        # [탭 3] 종목 상세조회
+        with tab3:
+            st.subheader("🔍 ETF 개별 종목 정밀 분석")
+            target_etf = st.selectbox("종목을 선택하세요:", df_analysis['ETF명'].unique())
+            row = df_analysis[df_analysis['ETF명'] == target_etf].iloc[0]
+            
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("현재 추세", row['현재추세'])
+            col_b.metric("오늘 종가 기대수익률", f"{row['오늘 종가 기대수익률']:.2f}%")
+            col_c.metric("상관성 (모델 신뢰도)", f"{row['상관성(모델신뢰도)']:.2f}")
+else:
+    st.sidebar.error(f"❌ `{csv_filename}` 파일을 찾을 수 없습니다.")
