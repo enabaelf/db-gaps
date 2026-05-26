@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V16 - 섹터 복구 및 기대수익률 보정]")
-st.markdown("💡 최근 500영업일(약 2년) 시장 레짐을 반영하여 **기대수익률을 현실적으로 보정**하고 섹터별 순위를 복구한 버전입니다.")
+st.title("🥇 GAPS ETF 대시보드 [V17 - 차트 시각화 및 기간 세분화]")
+st.markdown("💡 실전 매매 비중 산출, 섹터별 순위, 백테스트, 그리고 개별 종목의 **이동평균선 차트 분석**까지 지원합니다.")
 
 # --- 대회 룰 기반 포트폴리오 최적화 알고리즘 ---
 def optimize_portfolio(df_predictions, target_col='Pred'):
@@ -69,7 +69,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
         
     return pd.DataFrame(portfolio)
 
-@st.cache_data(ttl=21600, show_spinner="⏳ 보정된 알고리즘으로 전 종목 시뮬레이션 중... (약 1분 소요)")
+@st.cache_data(ttl=21600, show_spinner="⏳ 전 종목 멀티 팩터 시뮬레이션 및 데이터 보정 중... (약 1분 소요)")
 def run_full_analysis(df_raw):
     ticker_dict = {}
     header_idx = -1
@@ -116,7 +116,7 @@ def run_full_analysis(df_raw):
             df_for_pred = df_clean.dropna(subset=['Next_Return'])
             if len(df_for_pred) < 20: continue
             
-            # --- [핵심 보정] 10년 전체가 아닌 최근 500영업일(약 2년) 데이터로 선형회귀를 수행하여 최근 고휘발성/모멘텀 반영 ---
+            # 최근 500영업일 레짐 반영 보정
             fit_window = min(len(df_for_pred), 500)
             df_fit = df_for_pred.tail(fit_window)
             slope, intercept = np.polyfit(df_fit['Weight_Score'], df_fit['Next_Return'], 1)
@@ -156,9 +156,8 @@ if os.path.exists(csv_filename):
 
     if df_raw is not None:
         df_analysis, df_daily = run_full_analysis(df_raw)
-        st.sidebar.success("📂 보정 완료된 V16 엔진 가동 중")
+        st.sidebar.success("📂 V17 데이터 최적화 매핑 완료")
         
-        # 4개의 탭으로 구성 (포트폴리오 비중, 섹터별 TOP3, 백테스트, 개별분석)
         tab1, tab2, tab3, tab4 = st.tabs([
             "🎯 오늘의 실전 매매 비중 (포트폴리오)", 
             "🏆 섹터별 추천 TOP 3", 
@@ -169,7 +168,7 @@ if os.path.exists(csv_filename):
         # [탭 1] 실전 매매 오더(Order)
         with tab1:
             st.subheader("🎯 오늘 자 최적화 포트폴리오 매수 비중 (대회 룰 100% 준수)")
-            st.markdown("규정에 따라 **위험자산 최대 70%**, **각 그룹별 최대 비중**을 꽉 채워 기대수익률을 극대화한 오더입니다. 장 초반에 이 비율대로 세팅하세요.")
+            st.markdown("규정에 따라 **위험자산 최대 70%**, **각 그룹별 최대 비중**을 꽉 채워 기대수익률을 극대화한 오더입니다.")
             
             df_pred_today = df_analysis.rename(columns={'오늘 종가 기대수익률': 'Pred'})
             optimal_portfolio = optimize_portfolio(df_pred_today, target_col='Pred')
@@ -185,10 +184,9 @@ if os.path.exists(csv_filename):
             
             st.dataframe(optimal_portfolio[['자산군', '카테고리', 'ETF명', '추천비중(%)', '기대수익률(%)']].style.format({'추천비중(%)': '{:.1f}%', '기대수익률(%)': '{:.3f}%'}), use_container_width=True)
 
-        # [탭 2] 섹터별 TOP 3 복구 화면
+        # [탭 2] 섹터별 TOP 3 화면
         with tab2:
-            st.subheader("🏆 카테고리별 오늘 자 기대수익률 TOP 3 (보정형)")
-            st.caption("각 섹터/자산군 내에서 모델이 가장 유망하다고 판단한 상위 3개 종목입니다. 비중 배정 전 소스 데이터 확인용으로 좋습니다.")
+            st.subheader("🏆 카테고리별 오늘 자 기대수익률 TOP 3")
             unique_cats = df_analysis['카테고리'].unique()
             for i in range(0, len(unique_cats), 2):
                 cols = st.columns(2)
@@ -199,12 +197,12 @@ if os.path.exists(csv_filename):
                         df_cat.index += 1
                         st.dataframe(df_cat[['ETF명', '현재추세', '오늘 종가 기대수익률']].style.format({'오늘 종가 기대수익률': '{:.3f}%'}), use_container_width=True)
 
-        # [탭 3] 매일 교체매매 시뮬레이션
+        # [탭 3] 매일 교체매매 시뮬레이션 (1일 옵션 추가됨)
         with tab3:
             st.subheader("🔥 규정 비율대로 매일 리밸런싱했을 때의 복리 수익률")
-            st.caption("과거로 돌아가서 '매일매일 위 탭의 알고리즘대로 분산 투자' 했다고 가정하고 계산된 실전 성적표입니다.")
-            period = st.radio("시뮬레이션 기간:", ["1주 (5영업일)", "2주 (10영업일)", "1달 (20영업일)"], horizontal=True)
-            days = 5 if "1주" in period else (10 if "2주" in period else 20)
+            # "1일 (1영업일)"을 선택지에 맨 앞으로 배치!
+            period = st.radio("시뮬레이션 기간 선택:", ["1일 (1영업일)", "1주 (5영업일)", "2주 (10영업일)", "1달 (20영업일)"], horizontal=True)
+            days = 1 if "1일" in period else (5 if "1주" in period else (10 if "2주" in period else 20))
             
             if not df_daily.empty:
                 unique_dates = sorted(df_daily['Date'].unique())[-days:]
@@ -232,9 +230,9 @@ if os.path.exists(csv_filename):
                 df_chart = pd.DataFrame({'🤖 룰 기반 최적화 포트폴리오': cum_model, '📊 시장 전체 1/N': cum_market}, index=dates_list)
                 st.line_chart(df_chart, use_container_width=True)
 
-        # [탭 4] 종목 상세조회
+        # [탭 4] 종목 상세조회 및 기술적 분석 그래프 차트 추가
         with tab4:
-            st.subheader("🔍 ETF 개별 종목 정밀 분석")
+            st.subheader("🔍 ETF 개별 종목 정밀 분석 및 기술적 지표 차트")
             target_etf = st.selectbox("종목을 선택하세요:", df_analysis['ETF명'].unique())
             row = df_analysis[df_analysis['ETF명'] == target_etf].iloc[0]
             
@@ -242,5 +240,21 @@ if os.path.exists(csv_filename):
             col_a.metric("현재 추세", row['현재추세'])
             col_b.metric("오늘 종가 기대수익률", f"{row['오늘 종가 기대수익률']:.3f}%")
             col_c.metric("상관성 (모델 신뢰도)", f"{row['상관성(모델신뢰도)']:.2f}")
+            
+            # --- [핵심 기능] 개별 주가 및 20일 이평선 실시간 시각화 차트 구현 ---
+            ticker_clean = str(row['종목코드']).replace('A', '')
+            try:
+                with st.spinner(f"📈 {target_etf}의 최근 1개년 주가 및 20일 이동평균선 데이터 동적 로드 중..."):
+                    g_start = (datetime.today() - timedelta(days=365)).strftime('%Y-%m-%d')
+                    g_end = datetime.today().strftime('%Y-%m-%d')
+                    
+                    # 주가 정보 실시간 크롤링 및 계산
+                    df_stock_chart = fdr.DataReader(ticker_clean, g_start, g_end)[['Close']].rename(columns={'Close': '마감 종가'})
+                    df_stock_chart['20일 이동평균선'] = df_stock_chart['마감 종가'].rolling(20).mean()
+                    
+                    st.markdown(f"### 📊 {target_etf} ({row['종목코드']}) 최근 1년 주가 추이")
+                    st.line_chart(df_stock_chart, use_container_width=True)
+            except Exception as e:
+                st.error(f"⚠️ 차트를 로드하는 데 실패했습니다. 원인: {e}")
 else:
     st.sidebar.error(f"❌ `{csv_filename}` 파일을 찾을 수 없습니다.")
