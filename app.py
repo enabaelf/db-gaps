@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V19 - 다중 회귀 동적 가중치 모델]")
-st.markdown("💡 인간의 고정된 가중치를 버리고, 1~4일 전 패턴이 내일 주가에 미치는 확률적 가중치를 **모델이 스스로 찾아 합산하는 다중 회귀 분석**이 적용되었습니다.")
+st.title("🥇 GAPS ETF 대시보드 [V21 - 10개년 패턴 기댓값(손익비) 모델]")
+st.markdown("💡 1~4일 전의 [상/하] 방향성 패턴을 분석하여, 단순 승률이 아닌 **과거 해당 패턴이 보였던 실제 기대수익률(확률 × 변동폭)**을 합산한 모델입니다.")
 
 # --- 대회 룰 기반 포트폴리오 최적화 알고리즘 ---
 def optimize_portfolio(df_predictions, target_col='Pred'):
@@ -24,7 +24,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
     
     for _, row in df_sorted.iterrows():
         if total_budget <= 0: break
-        if row[target_col] <= 0: break 
+        if row[target_col] <= 0: break # 기대수익률이 0 이하(손실 예상)이면 패스
         
         raw_cat = str(row['카테고리']).replace(' ', '').replace('_', '')
         limit, asset_type, c_name = 10, '위험', '기타주식'
@@ -69,7 +69,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
         
     return pd.DataFrame(portfolio)
 
-@st.cache_data(ttl=21600, show_spinner="⏳ 다중 회귀 분석으로 종목별 동적 패턴 가중치 계산 중... (약 1분 소요)")
+@st.cache_data(ttl=21600, show_spinner="⏳ 10년 치 상/하 패턴 전수조사 및 기댓값(손익비) 계산 중... (약 1분 소요)")
 def run_full_analysis(df_raw):
     ticker_dict = {}
     header_idx = -1
@@ -104,37 +104,38 @@ def run_full_analysis(df_raw):
             df = fdr.DataReader(ticker, start_date, end_date)[['Close']].rename(columns={'Close': 'Price'})
             if len(df) < 40: continue
 
-            # [핵심] 1~4일 전 수익률을 독립 변수로 분리 (사용자 요청 아이디어)
             df['Price_Change'] = df['Price'].pct_change()
-            df['Lag1'] = df['Price_Change']
-            df['Lag2'] = df['Price_Change'].shift(1)
-            df['Lag3'] = df['Price_Change'].shift(2)
-            df['Lag4'] = df['Price_Change'].shift(3)
             
-            df['MA20'] = df['Price'].rolling(20).mean()
-            df['Trend'] = np.where(df['Price'] >= df['MA20'], "🟢상승세", "🔴하락세")
+            # 1. 가격 방향 기호화 (상승: 1, 하락: 0) - 패턴 족보 생성용
+            df['Dir'] = np.where(df['Price_Change'] > 0, 1, 0)
+            df['L1'] = df['Dir']
+            df['L2'] = df['Dir'].shift(1)
+            df['L3'] = df['Dir'].shift(2)
+            df['L4'] = df['Dir'].shift(3)
+            
+            # 예측 대상: 다음 날의 '실제 수익률' (확률이 아닌 기댓값 도출용)
             df['Next_Return'] = df['Price_Change'].shift(-1)
             
-            df_clean = df.dropna(subset=['Lag4', 'Next_Return']).copy()
-            if len(df_clean) < 20: continue
+            df_clean = df.dropna(subset=['L4', 'Next_Return']).copy()
+            if len(df_clean) < 100: continue
             
-            # 500영업일 다중 회귀 모델 (1~4일의 가중치를 기계가 스스로 도출)
-            fit_window = min(len(df_clean), 500)
-            df_fit = df_clean.tail(fit_window)
+            # 3. 각 패턴별 '기대수익률(평균 수익률)' 족보 사전 구축
+            e1_map = df_clean.groupby('L1')['Next_Return'].mean().to_dict()
+            e2_map = df_clean.groupby(['L1', 'L2'])['Next_Return'].mean().to_dict()
+            e3_map = df_clean.groupby(['L1', 'L2', 'L3'])['Next_Return'].mean().to_dict()
+            e4_map = df_clean.groupby(['L1', 'L2', 'L3', 'L4'])['Next_Return'].mean().to_dict()
             
-            X_fit = df_fit[['Lag1', 'Lag2', 'Lag3', 'Lag4']].values
-            y_fit = df_fit['Next_Return'].values
+            # 4. 과거 매일의 데이터에 기댓값 대입 (희귀 패턴으로 결측 시 0.0 부여)
+            df_clean['E1'] = df_clean['L1'].map(e1_map).fillna(0.0)
+            df_clean['E2'] = df_clean.set_index(['L1', 'L2']).index.map(e2_map.get).fillna(0.0)
+            df_clean['E3'] = df_clean.set_index(['L1', 'L2', 'L3']).index.map(e3_map.get).fillna(0.0)
+            df_clean['E4'] = df_clean.set_index(['L1', 'L2', 'L3', 'L4']).index.map(e4_map.get).fillna(0.0)
             
-            # 행렬 연산을 위한 1(상수항) 추가
-            X_design = np.column_stack((np.ones(len(X_fit)), X_fit))
+            # 5. 네 가지 기댓값을 합산 후 정규화 (최종 평균 기대수익률 산출)
+            df_clean['Avg_Exp_Return'] = (df_clean['E1'] + df_clean['E2'] + df_clean['E3'] + df_clean['E4']) / 4.0
             
-            # 최소제곱법(OLS)으로 최적 가중치 도출
-            coeffs, _, _, _ = np.linalg.lstsq(X_design, y_fit, rcond=None)
-            intercept = coeffs[0]
-            w1, w2, w3, w4 = coeffs[1:]
-            
-            # 각 패턴의 확률적 영향을 곱하고 모두 더해 정규화된 기대수익률 산출
-            df_clean['Pred'] = (intercept + df_clean['Lag1']*w1 + df_clean['Lag2']*w2 + df_clean['Lag3']*w3 + df_clean['Lag4']*w4) * 100
+            # 퍼센티지(%) 변환 및 포트폴리오 연동
+            df_clean['Pred'] = df_clean['Avg_Exp_Return'] * 100
             df_clean['Actual'] = df_clean['Next_Return'] * 100
             
             df_hist = df_clean.dropna(subset=['Actual']).tail(20)
@@ -144,13 +145,14 @@ def run_full_analysis(df_raw):
                     'Pred': row['Pred'], 'Actual': row['Actual']
                 })
 
-            pred_ret = df_clean['Pred'].iloc[-1]
-            corr = df_fit['Pred'].corr(df_fit['Actual']) # 모델 예측치와 실제 정답 간의 상관성
+            # 오늘 자 마감 기준 내일의 예측치
+            final_exp_return = df_clean['Pred'].iloc[-1]
+            df['MA20'] = df['Price'].rolling(20).mean()
+            df['Trend'] = np.where(df['Price'] >= df['MA20'], "🟢상승세", "🔴하락세")
 
             summary_results.append({
                 '종목코드': 'A' + ticker, 'ETF명': info['name'], '카테고리': info['category'],
-                '현재추세': df_clean['Trend'].iloc[-1],
-                '오늘 종가 기대수익률': pred_ret, '상관성(모델신뢰도)': corr
+                '현재추세': df['Trend'].iloc[-1], '패턴 기반 기대수익률': final_exp_return
             })
         except: pass
         
@@ -168,7 +170,7 @@ if os.path.exists(csv_filename):
 
     if df_raw is not None:
         df_analysis, df_daily = run_full_analysis(df_raw)
-        st.sidebar.success("📂 V19 엔진 (다중 회귀 동적 가중치) 로드 완료")
+        st.sidebar.success("📂 V21 패턴 기댓값 맵핑 완료")
         
         tab1, tab2, tab3, tab4 = st.tabs([
             "🎯 오늘의 실전 매매 비중", 
@@ -179,37 +181,37 @@ if os.path.exists(csv_filename):
 
         # [탭 1] 실전 매매 오더
         with tab1:
-            st.subheader("🎯 오늘 자 최적화 포트폴리오 매수 비중 (대회 룰 100% 준수)")
-            df_pred_today = df_analysis.rename(columns={'오늘 종가 기대수익률': 'Pred'})
+            st.subheader("🎯 오늘 자 최적화 포트폴리오 비중")
+            st.markdown("단순 승률이 아닌, 확률과 변동폭을 곱한 **기대수익률(기댓값)이 가장 높은 종목**을 우선순위로 채웠습니다.")
+            
+            df_pred_today = df_analysis.rename(columns={'패턴 기반 기대수익률': 'Pred'})
             optimal_portfolio = optimize_portfolio(df_pred_today, target_col='Pred')
             
             risk_sum = float(optimal_portfolio[optimal_portfolio['자산군'] == '위험']['추천비중(%)'].sum())
             safe_sum = float(optimal_portfolio[optimal_portfolio['자산군'] == '안전']['추천비중(%)'].sum())
-            expected_total_return = float((optimal_portfolio['추천비중(%)'] / 100 * optimal_portfolio['기대수익률(%)'].fillna(0)).sum())
             
-            m1, m2, m3 = st.columns(3)
-            m1.metric("🔴 위험자산 (Max 70%)", f"{risk_sum:.1f}%")
+            m1, m2 = st.columns(2)
+            m1.metric("🔴 위험자산 총합 (Max 70%)", f"{risk_sum:.1f}%")
             m2.metric("🟢 안전자산 총합", f"{safe_sum:.1f}%")
-            m3.metric("✨ 포트폴리오 총 기대수익률", f"{expected_total_return:.3f}%")
             
             st.dataframe(optimal_portfolio[['자산군', '카테고리', 'ETF명', '추천비중(%)', '기대수익률(%)']].style.format({'추천비중(%)': '{:.1f}%', '기대수익률(%)': '{:.3f}%'}), use_container_width=True)
 
         # [탭 2] 섹터별 TOP 3
         with tab2:
-            st.subheader("🏆 카테고리별 오늘 자 기대수익률 TOP 3")
+            st.subheader("🏆 카테고리별 패턴 기대수익률 TOP 3")
             unique_cats = df_analysis['카테고리'].unique()
             for i in range(0, len(unique_cats), 2):
                 cols = st.columns(2)
                 for j, cat in enumerate(unique_cats[i:i+2]):
                     with cols[j]:
                         st.markdown(f"#### 📂 {cat}")
-                        df_cat = df_analysis[df_analysis['카테고리'] == cat].sort_values(by='오늘 종가 기대수익률', ascending=False).head(3).reset_index(drop=True)
+                        df_cat = df_analysis[df_analysis['카테고리'] == cat].sort_values(by='패턴 기반 기대수익률', ascending=False).head(3).reset_index(drop=True)
                         df_cat.index += 1
-                        st.dataframe(df_cat[['ETF명', '현재추세', '오늘 종가 기대수익률']].style.format({'오늘 종가 기대수익률': '{:.3f}%'}), use_container_width=True)
+                        st.dataframe(df_cat[['ETF명', '현재추세', '패턴 기반 기대수익률']].style.format({'패턴 기반 기대수익률': '{:.3f}%'}), use_container_width=True)
 
         # [탭 3] 백테스트
         with tab3:
-            st.subheader("🔥 규정 비율 매일 리밸런싱 백테스트 (다중 회귀 모델 vs 1/N vs 이론적 최대치)")
+            st.subheader("🔥 규정 비율 매일 리밸런싱 백테스트 (기댓값 모델 vs 1/N vs 이론적 최대치)")
             period = st.radio("시뮬레이션 기간 선택:", ["1일 (1영업일)", "1주 (5영업일)", "2주 (10영업일)", "1달 (20영업일)"], horizontal=True)
             days = 1 if "1일" in period else (5 if "1주" in period else (10 if "2주" in period else 20))
             
@@ -237,14 +239,14 @@ if os.path.exists(csv_filename):
                 cum_max = (np.cumprod(1 + np.array(daily_max_returns)) - 1) * 100
                 
                 c1, c2, c3, c4 = st.columns(4)
-                c1.metric(f"🤖 {period} 모델 포트폴리오", f"{cum_model[-1]:.2f}%")
-                c2.metric(f"📊 {period} 시장 평균", f"{cum_market[-1]:.2f}%")
+                c1.metric(f"🤖 {period} 패턴 기댓값 모델", f"{cum_model[-1]:.2f}%")
+                c2.metric(f"📊 {period} 시장 평균 1/N", f"{cum_market[-1]:.2f}%")
                 c3.metric("✨ 알파 (초과 수익)", f"{(cum_model[-1] - cum_market[-1]):.2f}%")
                 c4.metric("👑 신의 영역 (이론적 최대)", f"{cum_max[-1]:.2f}%")
                 
                 df_chart = pd.DataFrame({
                     '👑 신의 영역 (완벽한 예지력)': cum_max,
-                    '🤖 다중 회귀 최적화 포트폴리오': cum_model, 
+                    '🤖 기댓값 최적화 포트폴리오': cum_model, 
                     '📊 시장 전체 평균 1/N': cum_market
                 }, index=dates_list)
                 st.line_chart(df_chart, use_container_width=True)
@@ -255,10 +257,9 @@ if os.path.exists(csv_filename):
             target_etf = st.selectbox("종목을 선택하세요:", df_analysis['ETF명'].unique())
             row = df_analysis[df_analysis['ETF명'] == target_etf].iloc[0]
             
-            col_a, col_b, col_c = st.columns(3)
+            col_a, col_b = st.columns(2)
             col_a.metric("현재 추세", row['현재추세'])
-            col_b.metric("오늘 종가 기대수익률", f"{row['오늘 종가 기대수익률']:.3f}%")
-            col_c.metric("상관성 (모델 신뢰도)", f"{row['상관성(모델신뢰도)']:.2f}")
+            col_b.metric("내일 패턴 기반 기대수익률", f"{row['패턴 기반 기대수익률']:.3f}%")
             
             ticker_clean = str(row['종목코드']).replace('A', '')
             try:
