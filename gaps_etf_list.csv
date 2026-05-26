@@ -1,0 +1,193 @@
+﻿,제12회 GAPS ETF 리스트 (2026-5-9 게시),,,,,
+,- 자산군별/스타일별/섹터별 ETF + 테마 ETF(AUM 상위 25개) 입니다.,,,,,
+,"- 일부 대표지수의 경우, 동일한 지수를 추종하는 복수의 ETF가 포함되어 있습니다. ",,,,,
+,,,,,,
+,티커,ETF명, AUM(억원) ,기초지수,구분1,구분2
+,A411060,ACE KRX금현물," 52,303 ",KRX 금현물지수,위험,FX 및 원자재
+,A144600,KODEX 은선물(H)," 14,590 ",S&P GSCI Silver Index(TR),위험,FX 및 원자재
+,A132030,KODEX 골드선물(H)," 4,821 ",S&P GSCI Gold Index(TR),위험,FX 및 원자재
+,A261220,KODEX WTI원유선물(H)," 1,428 ",S&P GSCI Crude Oil Index ER,위험,FX 및 원자재
+,A261240,KODEX 미국달러선물, 724 ,미국달러 선물지수,위험,FX 및 원자재
+,A292560,TIGER 일본엔선물, 542 ,엔선물지수,위험,FX 및 원자재
+,A271060,KODEX 3대농산물선물(H), 252 ,S&P GSCI Grains Select Index Excess Return,위험,FX 및 원자재
+,A360750,TIGER 미국S&P500," 147,821 ",S&P 500,위험,해외주식_지수
+,A379800,KODEX 미국S&P500," 81,089 ",S&P 500,위험,해외주식_지수
+,A133690,TIGER 미국나스닥100," 79,730 ",NASDAQ 100,위험,해외주식_지수
+,A379810,KODEX 미국나스닥100," 55,319 ",NASDAQ 100,위험,해외주식_지수
+,A381180,TIGER 미국필라델피아반도체나스닥," 34,100 ",PHLX Semiconductor Sector Index,위험,해외주식_지수
+,A360200,ACE 미국S&P500," 33,475 ",S&P 500,위험,해외주식_지수
+,A367380,ACE 미국나스닥100," 27,323 ",NASDAQ 100,위험,해외주식_지수
+,A379780,RISE 미국S&P500," 14,147 ",S&P 500,위험,해외주식_지수
+,A371160,TIGER 차이나항셍테크," 9,134 ",Hang Seng TECH Index,위험,해외주식_지수
+,A449180,KODEX 미국S&P500(H)," 6,946 ",S&P 500,위험,해외주식_지수
+,A251350,KODEX 선진국MSCI World," 4,913 ",MSCI World,위험,해외주식_지수
+,A448290,TIGER 미국S&P500TR(H)," 4,371 ",S&P 500 Total Return Index,위험,해외주식_지수
+,A241180,TIGER 일본니케이225," 4,279 ",Nikkei 225,위험,해외주식_지수
+,A453810,KODEX 인도Nifty50," 4,103 ",Nifty 50 Index,위험,해외주식_지수
+,A453870,TIGER 인도니프티50," 3,951 ",Nifty 50 Index,위험,해외주식_지수
+,A245710,ACE 베트남VN30(합성)," 3,155 ",VN30 Index(PR),위험,해외주식_지수
+,A448300,TIGER 미국나스닥100TR(H)," 2,963 ",NASDAQ-100 Total Return Index,위험,해외주식_지수
+,A283580,KODEX 차이나CSI300," 2,825 ",CSI 300,위험,해외주식_지수
+,A200250,KIWOOM 인도Nifty50(합성)," 2,215 ",Nifty 50 Index,위험,해외주식_지수
+,A414780,TIGER 차이나과창판STAR50(합성)," 2,068 ",STAR 50 Index(Price Return),위험,해외주식_지수
+,A372330,KODEX 차이나항셍테크," 1,627 ",Hang Seng TECH Index,위험,해외주식_지수
+,A192090,TIGER 차이나CSI300," 1,575 ",CSI 300,위험,해외주식_지수
+,A219480,KODEX 미국S&P500선물(H)," 1,437 ",S&P 500 Futures Total Return Index,위험,해외주식_지수
+,A245340,TIGER 미국다우존스30," 1,412 ",Dow Jones Industrial Average,위험,해외주식_지수
+,A168580,ACE 중국본토CSI300," 1,301 ",CSI 300,위험,해외주식_지수
+,A488500,TIGER 미국S&P500동일가중," 1,293 ",S&P 500 Equal Weight Index(PR),위험,해외주식_지수
+,A304940,KODEX 미국나스닥100선물(H)," 1,056 ",NASDAQ 100,위험,해외주식_지수
+,A143850,TIGER 미국S&P500선물(H), 982 ,S&P 500 Futures Index(ER),위험,해외주식_지수
+,A195980,PLUS 신흥국MSCI(합성 H), 920 ,MSCI EM Index,위험,해외주식_지수
+,A101280,KODEX 일본TOPIX100, 624 ,TOPIX100,위험,해외주식_지수
+,A099140,KODEX 차이나H, 437 ,HSCEI (Hang Seng China Enterprise Index),위험,해외주식_지수
+,A245360,TIGER 차이나HSCEI, 400 ,HSCEI (Hang Seng China Enterprise Index),위험,해외주식_지수
+,A238720,ACE 일본Nikkei225(H), 359 ,Nikkei 225,위험,해외주식_지수
+,A195930,TIGER 유로스탁스50(합성 H), 354 ,EURO STOXX50,위험,해외주식_지수
+,A256440,ACE 인도네시아MSCI(합성), 345 ,MSCI Indonesia Index,위험,해외주식_지수
+,A280930,KODEX 미국러셀2000(H), 326 ,FTSE Russell 2000 Index,위험,해외주식_지수
+,A195970,PLUS 선진국MSCI(합성 H), 244 ,MSCI EAFE Index,위험,해외주식_지수
+,A250730,RISE 차이나HSCEI(H), 172 ,HSCEI (Hang Seng China Enterprise Index),위험,해외주식_지수
+,A291130,ACE 멕시코MSCI(합성), 171 ,MSCI MEXICO IMI 25/50 Price return Index,위험,해외주식_지수
+,A195920,TIGER 일본TOPIX(합성 H), 159 ,TOPIX,위험,해외주식_지수
+,A310080,RISE 중국MSCI China(H), 119 ,MSCI China NTR Index(USD) (Net Total Return),위험,해외주식_지수
+,A105010,TIGER 라틴35, 113 ,BNY Latin America 35 ADR Index,위험,해외주식_지수
+,A379790,RISE 유로스탁스50(H), 109 ,EURO STOXX50,위험,해외주식_지수
+,A411860,KIWOOM 독일DAX, 104 ,DAX Index(PR),위험,해외주식_지수
+,A499150,SOL 미국S&P500엔화노출(H), 85 ,S&P500 Yen Hedged Index(PR),위험,해외주식_지수
+,A189400,PLUS 글로벌MSCI(합성 H), 70 ,MSCI ACWI Index,위험,해외주식_지수
+,A261920,ACE 필리핀MSCI(합성), 57 ,MSCI Philippines IMI Index,위험,해외주식_지수
+,A381170,TIGER 미국테크TOP10 INDXX," 38,009 ",Indxx US Tech Top 10 Index,위험,해외주식_섹터
+,A458730,TIGER 미국배당다우존스," 30,379 ",Dow Jones U.S. Dividend 100 Price Return Index,위험,해외주식_섹터
+,A487230,KODEX 미국AI전력핵심인프라," 13,631 ",iSelect 미국AI전력핵심인프라 지수(Price Return),위험,해외주식_섹터
+,A371460,TIGER 차이나전기차SOLACTIVE," 13,027 ",Solactive China Electric Vehicle and Battery Index(PR),위험,해외주식_섹터
+,A457480,ACE 테슬라밸류체인액티브," 11,487 ",Bloomberg EV Supporters Plus Tesla Price Return Index,위험,해외주식_섹터
+,A456600,TIME 글로벌AI인공지능액티브," 10,744 ",Solactive Global Artificial Intelligence 지수,위험,해외주식_섹터
+,A465580,ACE 미국빅테크TOP7 Plus," 9,716 ",Solactive US Big Tech Top 7 Plus Price Return Index,위험,해외주식_섹터
+,A446770,ACE 글로벌반도체TOP4 Plus," 9,671 ",Solactive Global Semiconductor TOP4 Plus Price Return Index,위험,해외주식_섹터
+,A446720,SOL 미국배당다우존스," 9,140 ",Dow Jones U.S. Dividend 100 Price Return Index,위험,해외주식_섹터
+,A497570,TIGER 미국필라델피아AI반도체나스닥," 8,188 ",PHLX US AI Semiconductor 지수 (PR),위험,해외주식_섹터
+,A402970,ACE 미국배당다우존스," 7,817 ",Dow Jones U.S. Dividend 100 Price Return Index,위험,해외주식_섹터
+,A390390,KODEX 미국반도체," 7,809 ",MVIS US Listed Semiconductor 25 Index,위험,해외주식_섹터
+,A452360,SOL 미국배당다우존스(H)," 2,026 ",Dow Jones U.S. Dividend 100 Price Return Index,위험,해외주식_섹터
+,A182480,TIGER 미국MSCI리츠(합성 H)," 1,666 ",MSCI US REIT INDEX,위험,해외주식_섹터
+,A429000,TIGER 미국S&P500배당귀족," 1,556 ",S&P 500 Dividend Aristocrats 지수 (Price Return),위험,해외주식_섹터
+,A463680,KODEX 미국S&P500테크놀로지, 648 ,S&P Technology Select Sector Index(Price Return),위험,해외주식_섹터
+,A453640,KODEX 미국S&P500헬스케어, 643 ,S&P Health Care Select Sector Index(Price Return),위험,해외주식_섹터
+,A200030,KODEX 미국S&P500산업재(합성), 500 ,S&P Select Sector Industrial Index,위험,해외주식_섹터
+,A453650,KODEX 미국S&P500금융, 435 ,S&P Financial Select Sector Index(Price Return),위험,해외주식_섹터
+,A218420,KODEX 미국S&P500에너지(합성), 410 ,S&P Select Sector Energy Index,위험,해외주식_섹터
+,A352560,KODEX 미국부동산리츠(H), 332 ,Dow Jones U.S. Real Estate PR Index,위험,해외주식_섹터
+,A493420,SOL 미국배당다우존스TR, 325 ,Dow Jones U.S. Dividend 100 Index(TR),위험,해외주식_섹터
+,A287180,PLUS 미국나스닥테크, 316 ,NASDAQ 100 Technology Sector Index,위험,해외주식_섹터
+,A245350,TIGER 유로스탁스배당30, 296 ,Euro STOXX Select Dividend 30,위험,해외주식_섹터
+,A494410,PLUS 미국S&P500성장주, 287 ,S&P 500 Growth Index(PR),위험,해외주식_섹터
+,A460660,RISE 미국S&P배당킹, 245 ,S&P Dividend Monarchs Index(Price Return),위험,해외주식_섹터
+,A185680,KODEX 미국S&P바이오(합성), 200 ,S&P Biotechnology Select Industry Index,위험,해외주식_섹터
+,A453630,KODEX 미국S&P500필수소비재, 176 ,S&P Consumer Staples Select Sector Index(Price Return),위험,해외주식_섹터
+,A463640,KODEX 미국S&P500유틸리티, 162 ,S&P Utilities Select Sector Index(Price Return),위험,해외주식_섹터
+,A453660,KODEX 미국S&P500경기소비재, 139 ,S&P Consumer Discretionary Select Sector Index(Price Return),위험,해외주식_섹터
+,A463690,KODEX 미국S&P500커뮤니케이션, 131 ,S&P Communication Services Select Sector Index(Price Return),위험,해외주식_섹터
+,A069500,KODEX 200," 164,803 ",코스피 200,위험,국내주식_지수
+,A229200,KODEX 코스닥150," 71,839 ",코스닥 150,위험,국내주식_지수
+,A102110,TIGER 200," 67,897 ",코스피 200,위험,국내주식_지수
+,A278530,KODEX 200TR," 52,559 ",코스피 200 TR지수,위험,국내주식_지수
+,A310970,TIGER MSCI Korea TR," 39,380 ",MSCI Korea TR Index,위험,국내주식_지수
+,A148020,RISE 200," 29,007 ",코스피 200,위험,국내주식_지수
+,A232080,TIGER 코스닥150," 22,098 ",코스닥 150,위험,국내주식_지수
+,A278540,KODEX MSCI Korea TR," 21,216 ",MSCI Korea TR Index,위험,국내주식_지수
+,A294400,KIWOOM 200TR," 15,375 ",코스피 200 TR지수,위험,국내주식_지수
+,A152100,PLUS 200," 13,051 ",코스피 200,위험,국내주식_지수
+,A226490,KODEX 코스피," 7,939 ",코스피지수,위험,국내주식_지수
+,A361580,RISE 200TR," 3,842 ",코스피 200 TR지수,위험,국내주식_지수
+,A277630,TIGER 코스피," 3,810 ",코스피지수,위험,국내주식_지수
+,A295040,SOL 200TR," 3,540 ",코스피 200 TR지수,위험,국내주식_지수
+,A302450,RISE 코스피," 3,310 ",코스피지수,위험,국내주식_지수
+,A328370,PLUS 코스피TR," 1,070 ",코스피 TR,위험,국내주식_지수
+,A156080,KODEX MSCI Korea, 294 ,MSCI Korea Index,위험,국내주식_지수
+,A091160,KODEX 반도체," 36,019 ",KRX 반도체,위험,국내주식_섹터
+,A161510,PLUS 고배당주," 23,624 ",FnGuide 배당주 지수,위험,국내주식_섹터
+,A102780,KODEX 삼성그룹," 23,508 ",MKF 삼성그룹지수,위험,국내주식_섹터
+,A395160,KODEX AI반도체," 20,947 ",FnGuide AI반도체지수,위험,국내주식_섹터
+,A466920,SOL 조선TOP3플러스," 18,733 ",FnGuide 조선TOP3플러스지수(PR),위험,국내주식_섹터
+,A305720,KODEX 2차전지산업," 18,187 ",FnGuide 2차전지 산업 지수,위험,국내주식_섹터
+,A449450,PLUS K방산," 17,803 ",FnGuide K-방위산업 지수,위험,국내주식_섹터
+,A487240,KODEX AI전력핵심설비," 15,914 ",iSelect AI 전력핵심설비 지수(Price Return),위험,국내주식_섹터
+,A395270,HANARO Fn K-반도체," 14,664 ",FnGuide K-반도체 지수 (시장가격),위험,국내주식_섹터
+,A315930,KODEX Top5PlusTR," 13,675 ",FnGuide TOP 5 Plus Total Return 지수,위험,국내주식_섹터
+,A305540,TIGER 2차전지테마," 11,376 ",WISE 2차전지 테마 지수,위험,국내주식_섹터
+,A494670,TIGER 조선TOP10," 9,938 ",iSelect 조선TOP10 Index(PR),위험,국내주식_섹터
+,A445290,KODEX 로봇액티브," 9,793 ",iSelect K-로봇테마 지수,위험,국내주식_섹터
+,A455850,SOL AI반도체소부장," 9,687 ",FnGuide AI 반도체 소부장 지수,위험,국내주식_섹터
+,A466940,TIGER 은행고배당플러스TOP10," 9,364 ",FnGuide 은행고배당플러스TOP10 지수(시장가격 지수),위험,국내주식_섹터
+,A463250,TIGER K방산&우주," 8,830 ",iSelect K방산&우주,위험,국내주식_섹터
+,A139260,TIGER 200 IT," 8,199 ",코스피 200 정보기술,위험,국내주식_섹터
+,A462010,TIGER 2차전지소재Fn," 7,840 ",FnGuide 2차전지소재 (Price Return) 지수,위험,국내주식_섹터
+,A434730,HANARO 원자력iSelect," 7,364 ",iSelect 원자력지수 (시장가격),위험,국내주식_섹터
+,A091180,KODEX 자동차," 5,224 ",KRX 자동차,위험,국내주식_섹터
+,A091170,KODEX 은행," 4,569 ",KRX 은행,위험,국내주식_섹터
+,A139230,TIGER 200 중공업," 3,928 ",코스피 200 중공업,위험,국내주식_섹터
+,A325010,KODEX 성장주," 1,495 ",FnGuide 성장 지수(PR),위험,국내주식_섹터
+,A363580,KODEX 200IT TR," 1,021 ",코스피 200 정보기술 TR,위험,국내주식_섹터
+,A139220,TIGER 200 건설, 491 ,코스피 200 건설,위험,국내주식_섹터
+,A139270,TIGER 200 금융, 430 ,코스피 200 금융,위험,국내주식_섹터
+,A227540,TIGER 200 헬스케어, 316 ,코스피 200 헬스케어,위험,국내주식_섹터
+,A147970,TIGER 모멘텀, 294 ,FnGuide 모멘텀 지수,위험,국내주식_섹터
+,A139250,TIGER 200 에너지화학, 288 ,코스피 200 에너지/화학,위험,국내주식_섹터
+,A174350,TIGER 로우볼, 94 ,FnGuide 로우볼 지수,위험,국내주식_섹터
+,A227550,TIGER 200 산업재, 91 ,코스피 200 산업재,위험,국내주식_섹터
+,A227570,TIGER 우량가치, 88 ,FnGuide 퀄리티 밸류 지수,위험,국내주식_섹터
+,A139290,TIGER 200 경기소비재, 83 ,코스피 200 경기소비재,위험,국내주식_섹터
+,A139240,TIGER 200 철강소재, 72 ,코스피 200 철강/소재,위험,국내주식_섹터
+,A315270,TIGER 200커뮤니케이션서비스, 66 ,코스피 200 커뮤니케이션서비스,위험,국내주식_섹터
+,A227560,TIGER 200 생활소비재, 42 ,코스피 200 생활소비재,위험,국내주식_섹터
+,A459580,KODEX CD금리액티브(합성)," 79,731 ",KAP 양도성예금증서(CD)금리지수(총수익지수),안전,금리연계형/초단기채권
+,A488770,KODEX 머니마켓액티브," 72,891 ",KAP MMF 지수(TR),안전,금리연계형/초단기채권
+,A423160,KODEX KOFR금리액티브(합성)," 43,045 ",KOFR 지수,안전,금리연계형/초단기채권
+,A455890,RISE 머니마켓액티브," 22,406 ",KIS 시가평가 MMF 지수 (총수익지수),안전,금리연계형/초단기채권
+,A469830,SOL 초단기채권액티브," 9,092 ",KAP 단기자금시장지수,안전,금리연계형/초단기채권
+,A153130,KODEX 단기채권," 7,321 ",KRW Cash Index(총수익),안전,금리연계형/초단기채권
+,A456610,TIGER 미국달러SOFR금리액티브(합성)," 6,550 ",Solactive SOFR Daily Total Return Index,안전,금리연계형/초단기채권
+,A196230,RISE 단기통안채," 2,081 ",KIS MSB 5M Index(총수익),안전,금리연계형/초단기채권
+,A455960,RISE 미국달러SOFR금리액티브(합성), 602 ,KAP SOFR 지수,안전,금리연계형/초단기채권
+,A468370,KODEX iShares미국인플레이션국채액티브, 187 ,ICE U.S. Treasury Inflation Linked Bond Index(Total Return),안전,금리연계형/초단기채권
+,A430500,KIWOOM 물가채KIS, 113 ,KIS TIPS 지수 (Total Return),안전,금리연계형/초단기채권
+,A458260,TIGER 미국투자등급회사채액티브(H)," 2,883 ",iBoxx USD Liquid Investment Grade Index(Price Return),안전,해외채권_회사채
+,A468380,KODEX iShares미국하이일드액티브," 1,160 ",ICE BofAML US HY Constrained Index(Total Return),안전,해외채권_회사채
+,A455660,ACE 미국하이일드액티브(H), 528 ,Markit iBoxx USD Liquid High Yield Total Return Index,안전,해외채권_회사채
+,A468630,KODEX iShares미국투자등급회사채액티브, 367 ,Markit iBoxx USD Liquid Investment Grade Index(Total Return),안전,해외채권_회사채
+,A332620,PLUS 미국장기우량회사채, 208 ,ICE BofaAML 15+ Year AAA-A US Corporate Index(총수익지수),안전,해외채권_회사채
+,A332610,PLUS 미국단기회사채(AAA~A), 131 ,ICE BofaAML 1-3 Year AAA-A US Corporate Index(총수익지수),안전,해외채권_회사채
+,A182490,TIGER 단기선진하이일드(합성 H), 82 ,Markit iBoxx USD Liquid High Yield 0-5 year Index,안전,해외채권_회사채
+,A453850,ACE 미국30년국채액티브(H)," 18,200 ",Bloomberg U.S Treasury 20+ Year Total Return Index,안전,해외채권_종합
+,A458250,TIGER 미국30년국채스트립액티브(합성 H)," 6,231 ",ICE BofA Long US Treasury Principal STRIPS Index,안전,해외채권_종합
+,A484790,KODEX 미국30년국채액티브(H)," 5,934 ",KEDI-KAP 미국 국채 20+ 지수(TR),안전,해외채권_종합
+,A329750,TIGER 미국달러단기채권액티브," 4,708 ",KIS U.S. TREASURY BOND 0-1Y 지수,안전,해외채권_종합
+,A472870,RISE 미국30년국채엔화노출(합성 H)," 3,570 ",KIS 미국채30년 엔화노출 지수(USD/JPY 헤지)(총수익지수),안전,해외채권_종합
+,A476760,ACE 미국30년국채액티브," 3,171 ",Bloomberg U.S Treasury 20+ Year Total Return Index,안전,해외채권_종합
+,A305080,TIGER 미국채10년선물," 2,446 ",S&P 10-Year U.S. Treasury Note Futures(ER),안전,해외채권_종합
+,A308620,KODEX 미국10년국채선물," 1,138 ",S&P 10-Year U.S. Treasury Note Futures KRW(ER),안전,해외채권_종합
+,A476750,ACE 미국30년국채엔화노출액티브(H), 860 ,Bloomberg U.S. Treasury 20+ Year Total Return Index T1530 JPY Currency Hedged,안전,해외채권_종합
+,A489000,PLUS 일본엔화초단기국채(합성), 219 ,KAP 일본 단기 국채 지수(총수익),안전,해외채권_종합
+,A267440,RISE 미국장기국채선물(H), 51 ,S&P U.S. Treasury Bond Futures Excess Return Index,안전,해외채권_종합
+,A273130,KODEX 종합채권(AA-이상)액티브," 38,484 ",KAP 한국종합채권지수,안전,국내채권_회사채
+,A385540,RISE 종합채권(A-이상)액티브," 17,737 ",KIS 종합채권 지수(A-이상)(총수익지수),안전,국내채권_회사채
+,A0061Z0,RISE 단기특수은행채액티브," 12,843 ",KAP 단기 특수은행채 지수(시장가격),안전,국내채권_회사채
+,A451540,TIGER 종합채권(AA-이상)액티브," 10,134 ",KIS 종합채권 AA-이상 총수익 지수(Total return Index),안전,국내채권_회사채
+,A438330,TIGER 투자등급회사채액티브," 6,984 ",KIS 투자등급회사채 지수(총수익),안전,국내채권_회사채
+,A0016X0,SOL 중단기회사채(A-이상)액티브," 3,669 ",KIS 중단기크레딧플러스채권(AA+~A-)지수(총수익),안전,국내채권_회사채
+,A363570,KODEX 장기종합채권(AA-이상)액티브," 3,200 ","KAP 한국장기종합채권지수(AA-이상, 총수익)",안전,국내채권_회사채
+,A278620,PLUS 단기채권액티브, 532 ,"KAP 투자적격 크레딧 채권 1년지수(A-이상,총수익)",안전,국내채권_회사채
+,A336160,RISE 금융채액티브, 417 ,KIS 종합채권금융채 2.5-3Y 지수(총수익),안전,국내채권_회사채
+,A157450,TIGER 단기통안채," 9,750 ",KIS MSB 6M(총수익),안전,국내채권_종합
+,A114260,KODEX 국고채3년," 5,353 ",MKF 국고채지수(총수익),안전,국내채권_종합
+,A148070,KIWOOM 국고채10년," 4,925 ",KIS 국고채 10년(총수익),안전,국내채권_종합
+,A439870,KODEX 국고채30년액티브," 3,549 ",KAP 국고채 30년 총수익 지수,안전,국내채권_종합
+,A302190,TIGER 중장기국채," 2,950 ",KIS 국채 3-10년 지수(시장가격지수),안전,국내채권_종합
+,A272560,RISE 단기국공채액티브," 1,915 ",KIS 종합채권국공채3M~1.5Y지수,안전,국내채권_종합
+,A114100,RISE 국고채3년," 1,798 ",KTB index(시장가격),안전,국내채권_종합
+,A451530,TIGER 국고채30년스트립액티브," 1,444 ",KIS STRIP 30Y Index(총수익지수),안전,국내채권_종합
+,A298340,PLUS 국채선물3년, 600 ,F-KTB 지수,안전,국내채권_종합
+,A426150,WON 대한민국국고채액티브, 530 ,KAP 한국 국고채 총수익 지수,안전,국내채권_종합
+,A152380,KODEX 국채선물10년, 402 ,10년국채선물지수,안전,국내채권_종합
+,A397420,RISE 국채선물5년추종, 52 ,5년 국채선물 추종 지수,안전,국내채권_종합
