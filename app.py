@@ -8,15 +8,10 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("📊 GAPS ETF 대시보드 [V6 - 표준 가중치 스코어 모델]")
-st.markdown("월가 표준 선형 가중치(WMA) 기반 단기 과매도/모멘텀 정밀 추천 시스템")
+st.title("📊 GAPS ETF 대시보드 [V7 - 선형 회귀 기대수익률 모델]")
+st.markdown("최근 4일 변동폭 가중치(WMA) 및 10년 통계 회귀분석 기반 내일의 기대수익률 예측 시스템")
 
-def to_numeric(val):
-    if pd.isna(val) or val == '-':
-        return np.nan
-    return float(str(val).replace('%', ''))
-
-@st.cache_data(ttl=21600, show_spinner="⏳ 가중치 스코어 모델로 10년 치 주가 분석 중... (약 1분 소요)")
+@st.cache_data(ttl=21600, show_spinner="⏳ 선형 회귀 모델로 10년 치 기대수익률 학습 중... (약 1분 소요)")
 def run_full_analysis(df_raw):
     ticker_dict = {}
     header_idx = -1
@@ -51,55 +46,49 @@ def run_full_analysis(df_raw):
     for ticker, info in ticker_dict.items():
         try:
             df = fdr.DataReader(ticker, start_date, end_date)[['Close']].rename(columns={'Close': 'Price'})
-            if len(df) < 15: continue
+            if len(df) < 20: continue
 
             df['Price_Change'] = df['Price'].pct_change()
             
-            # 당일 방향성 정의 (상승 +1, 하락 -1)
-            df['Dir'] = np.where(df['Price_Change'] > 0, 1, -1)
-            
-            # 월가 표준 4일 선형 가중 스코어 계산 (어제 40%, 2일전 30%, 3일전 20%, 4일전 10%)
+            # 회원님 아이디어: 방향성이 아닌 '실제 그날의 변동폭'에 가중치 매칭
             df['Weight_Score'] = (
-                df['Dir'].shift(1) * 0.4 +
-                df['Dir'].shift(2) * 0.3 +
-                df['Dir'].shift(3) * 0.2 +
-                df['Dir'].shift(4) * 0.1
+                df['Price_Change'] * 0.4 +
+                df['Price_Change'].shift(1) * 0.3 +
+                df['Price_Change'].shift(2) * 0.2 +
+                df['Price_Change'].shift(3) * 0.1
             )
-            df = df.dropna()
+            
+            # 예측 대상: 오늘 스코어를 기반으로 한 '내일의 실제 수익률'
+            df['Next_Return'] = df['Price_Change'].shift(-1)
+            df_clean = df.dropna()
+            
+            if len(df_clean) < 10: continue
 
-            # 1. 과매도 상태 (-0.6 이하) 일 때 다음 날 반등 확률 및 평균 반등폭
-            oversold_days = df[df['Weight_Score'] <= -0.6]
-            if len(oversold_days) > 0:
-                prob_reb = (oversold_days['Price_Change'] > 0).mean() * 100
-                ret_reb = oversold_days['Price_Change'].mean() * 100
-            else:
-                prob_reb, ret_reb = np.nan, np.nan
-
-            # 2. 강한 모멘텀 상태 (+0.6 이상) 일 때 다음 날 추가 상승 확률 및 평균 상승폭
-            momentum_days = df[df['Weight_Score'] >= 0.6]
-            if len(momentum_days) > 0:
-                prob_mom = (momentum_days['Price_Change'] > 0).mean() * 100
-                ret_mom = momentum_days['Price_Change'].mean() * 100
-            else:
-                prob_mom, ret_mom = np.nan, np.nan
-
-            # 3. 오늘 자 실제 계산된 스코어 (가장 최신 영업일 기준)
+            # 선형 회귀분석 수행 (y = slope * x + intercept)
+            # x: 과거 가중치 스코어들, y: 그다음 날 일어난 실제 수익률들
+            slope, intercept = np.polyfit(df_clean['Weight_Score'], df_clean['Next_Return'], 1)
+            
+            # 가장 최신 가중치 스코어 (오늘 자 마감 스코어)
             current_score = df['Weight_Score'].iloc[-1]
+            
+            # 일반 상태를 포함한 '내일 자 최종 기대수익률' 통계적 예측
+            predicted_next_return = (intercept + slope * current_score) * 100 # % 단위로 변환
+            
+            # 모델의 역사적 신뢰도 측정 (상관계수)
+            correlation = df_clean['Weight_Score'].corr(df_clean['Next_Return'])
 
             summary_results.append({
-                '종목코드': 'A' + ticker, 'ETF명': info['name'], '카테고리': info['category'],
-                '현재 가중치 스코어': round(current_score, 2),
-                '과매도_반등확률': f"{prob_reb:.2f}%" if not np.isnan(prob_reb) else "-",
-                '과매도_평균반등폭': f"{ret_reb:.2f}%" if not np.isnan(ret_reb) else "-",
-                '모멘텀_추가상승확률': f"{prob_mom:.2f}%" if not np.isnan(prob_mom) else "-",
-                '모멘텀_평균추가폭': f"{ret_mom:.2f}%" if not np.isnan(ret_mom) else "-",
-                '분석일수(샘플)': f"{len(df)}일"
+                '종목코드': 'A' + ticker, 
+                'ETF명': info['name'], 
+                '카테고리': info['category'],
+                '현재 가중치 스코어': f"{current_score*100:.3f}%",
+                '내일 기대수익률': round(predicted_next_return, 4),
+                '모델 신뢰도(상관성)': round(correlation, 2),
+                '분석일수(샘플)': f"{len(df_clean)}일"
             })
         except: pass
 
     df_final = pd.DataFrame(summary_results)
-    for col in ['과매도_반등확률', '과매도_평균반등폭', '모멘텀_추가상승확률', '모멘텀_평균추가폭']:
-        df_final[col + '_숫자'] = df_final[col].apply(to_numeric)
     return df_final
 
 csv_filename = "gaps_etf_list.csv"
@@ -117,50 +106,57 @@ if os.path.exists(csv_filename):
         df_analysis = run_full_analysis(df_raw)
         st.sidebar.info(f"📊 총 {len(df_analysis)}개 종목 분석 완료")
         
-        tab1, tab2, tab3 = st.tabs(["🏆 스코어 기반 전략 원픽", "🔍 종목 상세조회", "🔬 지난주 가중치 예측 검증"])
+        tab1, tab2, tab3 = st.tabs(["🏆 섹션별 기대수익률 TOP 3", "🔍 종목 상세조회", "🔬 지난주 예측력 검증 (회귀형)"])
 
-        # [탭 1] 메인 대시보드 리포트
+        # [탭 1] 카테고리별 Top 3 대시보드 리포트
         with tab1:
-            st.markdown("### 💡 현재 가중치 스코어 해석 가이드")
-            st.info("💡 **스코어가 -0.6 이하 이면?** 극단적 과매도 상태로 역사적 **기술적 반등** 타점입니다. \n\n🔥 **스코어가 +0.6 이상 이면?** 강력한 상승 정배열 상태로 **추격 매수(모멘텀)** 타점입니다.")
+            st.markdown("### 📈 내일 자 기대수익률 최적화 포트폴리오 추천")
+            st.info("💡 과거 10개년 데이터의 연속적 회귀 흐름을 분석하여, **일반 상태를 포함해 내일 가장 큰 수익이 기대되는 종목**을 섹션별로 3개씩 선별했습니다.")
             
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("🧊 [역발상 원픽] 현재 가장 과매도된 종목")
-                # 스코어가 낮을수록 과매도 상태
-                df_oversold_pick = df_analysis.sort_values(by='현재 가중치 스코어').head(5)
-                st.dataframe(df_oversold_pick[['카테고리', '종목코드', 'ETF명', '현재 가중치 스코어', '과매도_반등확률', '과매도_평균반등폭']], use_container_width=True)
-            with col2:
-                st.subheader("🔥 [모멘텀 원픽] 현재 상승세가 가장 강한 종목")
-                # 스코어가 높을수록 모멘텀 강함
-                df_momentum_pick = df_analysis.sort_values(by='현재 가중치 스코어', ascending=False).head(5)
-                st.dataframe(df_momentum_pick[['카테고리', '종목코드', 'ETF명', '현재 가중치 스코어', '모멘텀_추가상승확률', '모멘텀_평균추가폭']], use_container_width=True)
+            # 카테고리(섹션)별로 루프를 돌며 Top 3 출력
+            unique_categories = df_analysis['카테고리'].unique()
             
-            st.subheader("📋 전체 ETF 실시간 스코어 및 통계 리포트")
-            st.dataframe(df_analysis[['카테고리', '종목코드', 'ETF명', '현재 가중치 스코어', '과매도_반등확률', '과매도_평균반등폭', '모멘텀_추가상승확률', '모멘텀_평균추가폭', '분석일수(샘플)']], use_container_width=True)
+            # 시각적인 배치를 위해 2열 레이아웃 구성
+            cat_chunks = [unique_categories[i:i + 2] for i in range(0, len(unique_categories), 2)]
+            
+            for chunk in cat_chunks:
+                cols = st.columns(2)
+                for i, cat in enumerate(chunk):
+                    with cols[i]:
+                        st.subheader(f"📂 {cat} 섹션 Top 3")
+                        # 해당 카테고리 추출 후 내일 기대수익률 기준 내림차순 정렬
+                        df_cat = df_analysis[df_analysis['카테고리'] == cat]
+                        df_cat_top3 = df_cat.sort_values(by='내일 기대수익률', ascending=False).head(3).reset_index(drop=True)
+                        df_cat_top3.index = df_cat_top3.index + 1 # 순위를 1, 2, 3으로 표시
+                        
+                        # 보기 좋게 컬럼 포맷팅 조정
+                        df_display = df_cat_top3[['종목코드', 'ETF명', '현재 가중치 스코어', '내일 기대수익률', '모델 신뢰도(상관성)']].copy()
+                        df_display['내일 기대수익률'] = df_display['내일 기대수익률'].apply(lambda x: f"{x:.2f}%")
+                        st.dataframe(df_display, use_container_width=True)
+            
+            st.markdown("---")
+            st.subheader("📋 전체 ETF 기대수익률 전체 리포트 (필터 및 정렬 가능)")
+            st.dataframe(df_analysis[['카테고리', '종목코드', 'ETF명', '현재 가중치 스코어', '내일 기대수익률', '모델 신뢰도(상관성)', '분석일수(샘플)']].sort_values(by='내일 기대수익률', ascending=False), use_container_width=True)
 
         # [탭 2] 종목 상세조회
         with tab2:
-            st.subheader("🔍 ETF 개별 종목 가중치 스코어 조회")
+            st.subheader("🔍 ETF 개별 종목 회귀 모델 정밀 조회")
             if not df_analysis.empty:
                 selected_name = st.selectbox("조회할 ETF 종목을 선택하세요:", df_analysis['ETF명'].tolist(), key="tab2_select")
                 etf_info = df_analysis[df_analysis['ETF명'] == selected_name].iloc[0]
                 
                 m1, m2, m3 = st.columns(3)
-                m1.metric("종목 코드", etf_info['종목코드'])
-                m2.metric("현재 가중치 스코어", f"{etf_info['현재 가중치 스코어']}")
-                m3.metric("과거 데이터 분석 기간", etf_info['분석일수(샘플)'])
+                m1.metric("현재 마감 가중치 스코어(WMA)", f"{etf_info['현재 가중치 스코어']}")
+                
+                # 기대수익률 강도에 따라 색상 안내 레이블 유동 처리 가능
+                m2.metric("★ 내일 예측 기대수익률", f"{etf_info['내일 기대수익률']:.2f}%")
+                m3.metric("역사적 모델 신뢰도 (상관성)", f"{etf_info['모델 신뢰도(상관성)']}")
                 
                 st.markdown("---")
-                c1, c2 = st.columns(2)
-                with c1:
-                    st.warning("🧊 **역사적으로 이 종목의 스코어가 -0.6 이하로 내려갔을 때**")
-                    st.write(f"• 다음 날 반등 성공 확률: **{etf_info['과매도_반등확률']}**")
-                    st.write(f"• 반등 시 평균 기대 수익률: **{etf_info['과매도_평균반등폭']}**")
-                with c2:
-                    st.success("🔥 **역사적으로 이 종목의 스코어가 +0.6 이상으로 올라갔을 때**")
-                    st.write(f"• 다음 날 추가 상승 확률: **{etf_info['모멘텀_추가상승확률']}**")
-                    st.write(f"• 추가 상승 시 평균 기대 폭: **{etf_info['모멘텀_평균추가폭']}**")
+                st.markdown("### 💡 이 예측 수치는 어떻게 도출되었나요?")
+                st.write(f"1. 오늘 기준 최근 4일간의 실제 수익률 폭에 가중치를 곱해 계산한 오늘 자 점수는 **{etf_info['현재 가중치 스코어']}** 입니다.")
+                st.write(f"2. 지난 **{etf_info['분석일수(샘플)']}** 동안 이 점수가 발생했을 때 그다음 날 주가가 어떻게 변했는지 컴퓨터가 선형 함수로 관계를 찾아냈습니다.")
+                st.write(f"3. 모델 신뢰도가 **{etf_info['모델 신뢰도(상관성)']}** 이라는 것은 이 가중치 패턴이 내일 주가 방향을 예측하는 데 통계적 의미를 지니고 있음을 뜻합니다.")
                 
                 st.markdown("---")
                 st.markdown("### 📈 최근 1년 주가 추이 추적")
@@ -172,9 +168,11 @@ if os.path.exists(csv_filename):
                 except:
                     st.error("⚠️ 차트 데이터를 불러올 수 없습니다.")
 
-        # [탭 3] 지난주 데이터 예측력 검증
+        # [탭 3] 지난주 데이터 예측력 검증 (회귀분석 맞춤 백테스트)
         with tab3:
-            st.subheader("🔬 가중치 모델 아웃오브샘플 검증 (지난주 결과 대조)")
+            st.subheader("🔬 회귀 예측 백테스팅: 실제 지난주(5영업일) 결과와 대조")
+            st.markdown("과거 데이터로 가중치 회귀선(수식)을 도출한 뒤, **지난주 월~금요일 아침에 이 모델을 켰다면 당일 종가 수익률을 플러스/마이너스까지 맞췄는지** 검증합니다.")
+            
             if not df_analysis.empty:
                 selected_name_bt = st.selectbox("검증할 ETF 종목을 선택하세요:", df_analysis['ETF명'].tolist(), key="tab3_select")
                 bt_code = df_analysis[df_analysis['ETF명'] == selected_name_bt].iloc[0]['종목코드'].replace('A', '')
@@ -185,53 +183,54 @@ if os.path.exists(csv_filename):
                     df_bt = fdr.DataReader(bt_code, start_date, end_date)[['Close']].rename(columns={'Close': 'Price'})
                     
                     df_bt['Price_Change'] = df_bt['Price'].pct_change()
-                    df_bt['Dir'] = np.where(df_bt['Price_Change'] > 0, 1, -1)
                     df_bt['Weight_Score'] = (
-                        df_bt['Dir'].shift(1) * 0.4 +
-                        df_bt['Dir'].shift(2) * 0.3 +
-                        df_bt['Dir'].shift(3) * 0.2 +
-                        df_bt['Dir'].shift(4) * 0.1
+                        df_bt['Price_Change'] * 0.4 +
+                        df_bt['Price_Change'].shift(1) * 0.3 +
+                        df_bt['Price_Change'].shift(2) * 0.2 +
+                        df_bt['Price_Change'].shift(3) * 0.1
                     )
+                    df_bt['Next_Return'] = df_bt['Price_Change'].shift(-1)
                     df_bt = df_bt.dropna()
                     
-                    df_past_10y = df_bt.iloc[:-5]
-                    df_last_week = df_bt.tail(5)
+                    # 테스트 분할 (마지막 5일 제외)
+                    df_train = df_bt.iloc[:-5]
+                    df_test_period = df_bt.tail(5)
                     
-                    # 과거 가중치 통계 기준 확률 재계산
-                    past_oversold = df_past_10y[df_past_10y['Weight_Score'] <= -0.6]
-                    past_prob_reb = (past_oversold['Price_Change'] > 0).mean() * 100 if len(past_oversold) > 0 else np.nan
-                    
-                    past_momentum = df_past_10y[df_past_10y['Weight_Score'] >= 0.6]
-                    past_prob_mom = (past_momentum['Price_Change'] > 0).mean() * 100 if len(past_momentum) > 0 else np.nan
-                    
-                    st.markdown("#### 📅 실제 지난주(5영업일) 스코어 예측 결과 매칭")
+                    # 과거 기준 회귀선 도출
+                    slope_past, intercept_past = np.polyfit(df_train['Weight_Score'], df_train['Next_Return'], 1)
                     
                     bt_records = []
-                    for date, row in df_last_week.iterrows():
+                    # 최근 5영업일 검증 추적
+                    for date, row in df_test_period.iterrows():
                         date_str = date.strftime('%Y-%m-%d')
-                        actual_return = f"{row['Price_Change']*100:.2f}%"
-                        actual_result = "🔺 상승" if row['Dir'] == 1 else "🔻 하락"
                         
-                        score_now = round(row['Weight_Score'], 2)
-                        condition = f"일반 상태 (Score: {score_now})"
-                        hit = "-"
+                        # 전날 마감 시점의 스코어가 당일 수익률을 예측함 (즉 shift(1) 스코어 기준)
+                        pred_ret_raw = intercept_past + slope_past * row['Weight_Score']
+                        pred_ret_pct = pred_ret_raw * 100
+                        actual_ret_pct = row['Next_Return'] * 100
                         
-                        if score_now <= -0.6:
-                            condition = f"🧊 과매도 구간 (Score: {score_now})"
-                            hit = "✅ 적중" if row['Dir'] == 1 else "❌ 실패"
-                        elif score_now >= 0.6:
-                            condition = f"🔥 모멘텀 구간 (Score: {score_now})"
-                            hit = "✅ 적중" if row['Dir'] == 1 else "❌ 실패"
+                        if np.isnan(actual_ret_pct):
+                            # 만약 오늘이 장중이거나 아직 내일 주가가 없는 최신 행이라면 패스
+                            continue
                             
+                        pred_dir = "🔺 상승예측" if pred_ret_pct > 0 else "🔻 하락예측"
+                        actual_dir = "🔺 상승" if actual_ret_pct > 0 else "🔻 하락"
+                        
+                        # 방향 적중 여부 판정
+                        is_hit = "✅ 방향 적중" if (pred_ret_pct > 0 and actual_ret_pct > 0) or (pred_ret_pct < 0 and actual_ret_pct < 0) else "❌ 실패"
+                        
                         bt_records.append({
                             "날짜": date_str,
-                            "그 전날까지 누적된 가중치 상태": condition,
-                            "실제 결과": actual_result,
-                            "당일 수익률": actual_return,
-                            "예측 적중 여부(상승예측 기준)": hit
+                            "전날 마감 기준 가중치 스코어": f"{row['Weight_Score']*100:.3f}%",
+                            "모델의 내일 기대수익률 예측": f"{pred_ret_pct:.2f}% ({pred_dir})",
+                            "실제 다음 날 일어난 수익률": f"{actual_ret_pct:.2f}% ({actual_dir})",
+                            "예측 성공 여부": is_hit
                         })
                         
-                    st.dataframe(pd.DataFrame(bt_records), use_container_width=True)
+                    if bt_records:
+                        st.dataframe(pd.DataFrame(bt_records), use_container_width=True)
+                    else:
+                        st.info("💡 오늘 장이 진행 중이거나 아직 백테스트 매칭 데이터가 부족합니다. 주말이나 장 마감 후에 완벽히 표기됩니다.")
                 except Exception as e:
                     st.error(f"⚠️ 백테스팅 계산 오류: {e}")
 else:
