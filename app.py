@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("📊 GAPS ETF 대시보드 [V3 - 자동 로드 완료]")
+st.title("📊 GAPS ETF 대시보드 [V4 - 상세조회 기능 활성화]")
 st.markdown("과거 10년 주가 기반 상승 확률 및 기댓값 최적화 원픽 추천 시스템")
 
 def to_numeric(val):
@@ -16,7 +16,7 @@ def to_numeric(val):
         return np.nan
     return float(str(val).replace('%', ''))
 
-@st.cache_data(show_spinner="⏳ 바탕화면의 CSV 파일을 읽어 10년 치 주가 분석 중... (약 1분 소요)")
+@st.cache_data(show_spinner="⏳ CSV 파일을 읽어 10년 치 주가 분석 중... (약 1분 소요)")
 def run_full_analysis(df_raw):
     ticker_dict = {}
     header_idx = -1
@@ -87,14 +87,10 @@ def run_full_analysis(df_raw):
         df_final[col + '_숫자'] = df_final[col].apply(to_numeric)
     return df_final
 
-# 고정할 파일 이름 설정
 csv_filename = "gaps_etf_list.csv"
 
-# 파일이 같은 폴더(바탕화면)에 있는지 확인
 if os.path.exists(csv_filename):
     st.sidebar.success(f"📂 `{csv_filename}` 파일 감지 완료!")
-    
-    # 파일 자동 읽기
     df_raw = None
     for enc in ['utf-8-sig', 'cp949', 'utf-8', 'euc-kr']:
         try:
@@ -106,8 +102,10 @@ if os.path.exists(csv_filename):
         df_analysis = run_full_analysis(df_raw)
         st.sidebar.info(f"📊 총 {len(df_analysis)}개 종목 분석 완료")
         
+        # 두 개의 탭 생성
         tab1, tab2 = st.tabs(["🏆 전략별 카테고리 원픽", "🔍 종목 상세조회"])
 
+        # [탭 1] 메인 대시보드 리포트
         with tab1:
             col1, col2 = st.columns(2)
             with col1:
@@ -121,6 +119,51 @@ if os.path.exists(csv_filename):
             
             st.subheader("📋 전체 ETF 데이터 분석 리포트")
             st.dataframe(df_analysis[['카테고리', '종목코드', 'ETF명', '어제상승_오늘상승확률', '어제상승_오늘평균수익률', '3일하락_반등확률', '3일하락_평균반등폭', '3일상승_추가상승확률', '3일상승_평균추가상승폭', '분석일수(샘플)']], use_container_width=True)
+
+        # [탭 2] 종목 상세조회 기능 활성화
+        with tab2:
+            st.subheader("🔍 ETF 개별 종목 정밀 데이터 조회")
+            if not df_analysis.empty:
+                # 드롭다운 선택상자 생성
+                etf_names = df_analysis['ETF명'].tolist()
+                selected_name = st.selectbox("조회할 ETF 종목을 선택하세요:", etf_names)
+                
+                # 선택한 종목의 데이터 추출
+                etf_info = df_analysis[df_analysis['ETF명'] == selected_name].iloc[0]
+                
+                # 기본 정보 요약 카드형 대시보드
+                m1, m2, m3 = st.columns(3)
+                m1.metric("종목 코드", etf_info['종목코드'])
+                m2.metric("투자 전략 카테고리", etf_info['카테고리'])
+                m3.metric("과거 데이터 분석 기간", etf_info['분석일수(샘플)'])
+                
+                st.markdown("---")
+                st.markdown(f"### 📊 `{selected_name}` 시나리오별 통계")
+                
+                # 확률 및 수익률 상세 지표 비교
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.info("**🔹 기본 조건 (어제 상승 시)**")
+                    st.write(f"• 오늘 또 오를 확률: **{etf_info['어제상승_오늘상승확률']}**")
+                    st.write(f"• 오늘 평균 수익률: **{etf_info['어제상승_오늘평균수익률']}**")
+                with c2:
+                    st.success("**🔥 모멘텀 조건 (3일 연속 상승 시)**")
+                    st.write(f"• 추가 상승 확률: **{etf_info['3일상승_추가상승확률']}**")
+                    st.write(f"• 평균 추가 상승폭: **{etf_info['3일상승_평균추가상승폭']}**")
+                with c3:
+                    st.warning("**🧊 역발상 조건 (3일 연속 하락 시)**")
+                    st.write(f"• 기술적 반등 확률: **{etf_info['3일하락_반등확률']}**")
+                    st.write(f"• 평균 반등 상승폭: **{etf_info['3일하락_평균반등폭']}**")
+                
+                # 주가 흐름 시각화 차트 추가
+                st.markdown("---")
+                st.markdown("### 📈 최근 1년 주가 추이 추적")
+                raw_ticker = etf_info['종목코드'].replace('A', '')
+                try:
+                    chart_start = (datetime.today() - timedelta(days=365)).strftime('%Y-%m-%d')
+                    df_chart = fdr.DataReader(raw_ticker, chart_start)[['Close']].rename(columns={'Close': '주가(원)'})
+                    st.line_chart(df_chart, use_container_width=True)
+                except:
+                    st.error("⚠️ 해당 종목의 실시간 차트 데이터를 불러올 수 없습니다.")
 else:
     st.sidebar.error(f"❌ `{csv_filename}` 파일을 찾을 수 없습니다.")
-    st.error(f"⚠️ **안내:** 바탕화면에 **`gaps_etf_list.csv`** 파일이 없습니다. 파일 이름을 똑같이 맞춰서 `app.py`와 같은 바탕화면에 넣어두시면 주르륵 자동으로 실행됩니다!")
