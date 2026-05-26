@@ -1,4 +1,4 @@
 streamlit
-FinanceDataReader
+finance-datareader
 pandas
 numpy
