@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V17 - 차트 시각화 및 기간 세분화]")
-st.markdown("💡 실전 매매 비중 산출, 섹터별 순위, 백테스트, 그리고 개별 종목의 **이동평균선 차트 분석**까지 지원합니다.")
+st.title("🥇 GAPS ETF 대시보드 [V18 - 이론적 최대 수익률 탑재]")
+st.markdown("💡 실전 매매 비중 산출, 섹터별 순위, 개별 종목 차트, 그리고 타임머신을 가정한 **이론적 최대 수익률 백테스트**를 지원합니다.")
 
 # --- 대회 룰 기반 포트폴리오 최적화 알고리즘 ---
 def optimize_portfolio(df_predictions, target_col='Pred'):
@@ -116,7 +116,6 @@ def run_full_analysis(df_raw):
             df_for_pred = df_clean.dropna(subset=['Next_Return'])
             if len(df_for_pred) < 20: continue
             
-            # 최근 500영업일 레짐 반영 보정
             fit_window = min(len(df_for_pred), 500)
             df_fit = df_for_pred.tail(fit_window)
             slope, intercept = np.polyfit(df_fit['Weight_Score'], df_fit['Next_Return'], 1)
@@ -156,16 +155,16 @@ if os.path.exists(csv_filename):
 
     if df_raw is not None:
         df_analysis, df_daily = run_full_analysis(df_raw)
-        st.sidebar.success("📂 V17 데이터 최적화 매핑 완료")
+        st.sidebar.success("📂 V18 엔진 (이론적 최고치 포함) 로드 완료")
         
         tab1, tab2, tab3, tab4 = st.tabs([
             "🎯 오늘의 실전 매매 비중 (포트폴리오)", 
             "🏆 섹터별 추천 TOP 3", 
-            "🔥 대회 룰 적용 백테스트 (누적수익률)", 
+            "🔥 백테스트 (이론적 최대치 비교)", 
             "🔍 개별 종목 분석"
         ])
 
-        # [탭 1] 실전 매매 오더(Order)
+        # [탭 1] 실전 매매 오더
         with tab1:
             st.subheader("🎯 오늘 자 최적화 포트폴리오 매수 비중 (대회 룰 100% 준수)")
             st.markdown("규정에 따라 **위험자산 최대 70%**, **각 그룹별 최대 비중**을 꽉 채워 기대수익률을 극대화한 오더입니다.")
@@ -197,10 +196,9 @@ if os.path.exists(csv_filename):
                         df_cat.index += 1
                         st.dataframe(df_cat[['ETF명', '현재추세', '오늘 종가 기대수익률']].style.format({'오늘 종가 기대수익률': '{:.3f}%'}), use_container_width=True)
 
-        # [탭 3] 매일 교체매매 시뮬레이션 (1일 옵션 추가됨)
+        # [탭 3] 백테스트 (이론적 최대 수익률 탑재)
         with tab3:
-            st.subheader("🔥 규정 비율대로 매일 리밸런싱했을 때의 복리 수익률")
-            # "1일 (1영업일)"을 선택지에 맨 앞으로 배치!
+            st.subheader("🔥 규정 비율 매일 리밸런싱 백테스트 (모델 vs 1/N vs 이론적 최대치)")
             period = st.radio("시뮬레이션 기간 선택:", ["1일 (1영업일)", "1주 (5영업일)", "2주 (10영업일)", "1달 (20영업일)"], horizontal=True)
             days = 1 if "1일" in period else (5 if "1주" in period else (10 if "2주" in period else 20))
             
@@ -208,29 +206,46 @@ if os.path.exists(csv_filename):
                 unique_dates = sorted(df_daily['Date'].unique())[-days:]
                 df_period = df_daily[df_daily['Date'].isin(unique_dates)]
                 
-                daily_model_returns, daily_market_returns, dates_list = [], [], []
+                daily_model_returns, daily_market_returns, daily_max_returns, dates_list = [], [], [], []
                 
                 for d in unique_dates:
                     df_d = df_period[df_period['Date'] == d]
+                    
+                    # 1. 모델 예측(Pred) 기반 분산 매매
                     past_portfolio = optimize_portfolio(df_d, target_col='Pred')
                     daily_port_return = float((past_portfolio['추천비중(%)'] / 100 * past_portfolio['실제수익률(%)'].fillna(0)).sum())
-                    
                     daily_model_returns.append(daily_port_return / 100)
+                    
+                    # 2. 시장 1/N 무지성 매매
                     daily_market_returns.append(float(df_d['Actual'].mean() / 100))
+                    
+                    # 3. [핵심] 정답(Actual)을 미리 알고 룰에 맞춰 최적화했을 때의 '이론적 최대 수익률'
+                    max_portfolio = optimize_portfolio(df_d, target_col='Actual')
+                    daily_max_return = float((max_portfolio['추천비중(%)'] / 100 * max_portfolio['실제수익률(%)'].fillna(0)).sum())
+                    daily_max_returns.append(daily_max_return / 100)
+                    
                     dates_list.append(d)
                 
                 cum_model = (np.cumprod(1 + np.array(daily_model_returns)) - 1) * 100
                 cum_market = (np.cumprod(1 + np.array(daily_market_returns)) - 1) * 100
+                cum_max = (np.cumprod(1 + np.array(daily_max_returns)) - 1) * 100
                 
-                c1, c2, c3 = st.columns(3)
-                c1.metric(f"🤖 {period}간 [대회 룰] 최적화 매매 누적", f"{cum_model[-1]:.2f}%")
-                c2.metric(f"📊 {period}간 시장 1/N 무지성 매매 누적", f"{cum_market[-1]:.2f}%")
-                c3.metric("알파(초과 수익률)", f"{(cum_model[-1] - cum_market[-1]):.2f}%")
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric(f"🤖 {period} 모델 포트폴리오", f"{cum_model[-1]:.2f}%")
+                c2.metric(f"📊 {period} 시장 1/N 평균", f"{cum_market[-1]:.2f}%")
+                c3.metric("✨ 알파 (초과 수익률)", f"{(cum_model[-1] - cum_market[-1]):.2f}%")
+                c4.metric("👑 신의 영역 (이론적 최대)", f"{cum_max[-1]:.2f}%")
                 
-                df_chart = pd.DataFrame({'🤖 룰 기반 최적화 포트폴리오': cum_model, '📊 시장 전체 1/N': cum_market}, index=dates_list)
+                st.caption("※ **신의 영역(이론적 최대)**은 '당일 장 마감 후의 정답'을 미리 알았다고 가정하고, 대회 규정(위험 70% 등)을 꽉 채워 매수했을 때 달성할 수 있는 절대적인 한계치입니다.")
+                
+                df_chart = pd.DataFrame({
+                    '👑 신의 영역 (완벽한 예지력)': cum_max,
+                    '🤖 룰 기반 최적화 포트폴리오': cum_model, 
+                    '📊 시장 전체 평균 1/N': cum_market
+                }, index=dates_list)
                 st.line_chart(df_chart, use_container_width=True)
 
-        # [탭 4] 종목 상세조회 및 기술적 분석 그래프 차트 추가
+        # [탭 4] 종목 상세조회
         with tab4:
             st.subheader("🔍 ETF 개별 종목 정밀 분석 및 기술적 지표 차트")
             target_etf = st.selectbox("종목을 선택하세요:", df_analysis['ETF명'].unique())
@@ -241,14 +256,12 @@ if os.path.exists(csv_filename):
             col_b.metric("오늘 종가 기대수익률", f"{row['오늘 종가 기대수익률']:.3f}%")
             col_c.metric("상관성 (모델 신뢰도)", f"{row['상관성(모델신뢰도)']:.2f}")
             
-            # --- [핵심 기능] 개별 주가 및 20일 이평선 실시간 시각화 차트 구현 ---
             ticker_clean = str(row['종목코드']).replace('A', '')
             try:
                 with st.spinner(f"📈 {target_etf}의 최근 1개년 주가 및 20일 이동평균선 데이터 동적 로드 중..."):
                     g_start = (datetime.today() - timedelta(days=365)).strftime('%Y-%m-%d')
                     g_end = datetime.today().strftime('%Y-%m-%d')
                     
-                    # 주가 정보 실시간 크롤링 및 계산
                     df_stock_chart = fdr.DataReader(ticker_clean, g_start, g_end)[['Close']].rename(columns={'Close': '마감 종가'})
                     df_stock_chart['20일 이동평균선'] = df_stock_chart['마감 종가'].rolling(20).mean()
                     
