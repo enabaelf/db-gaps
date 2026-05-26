@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("📊 GAPS ETF 대시보드 [V9 - 거래량·추세 및 성과 비교 완료]")
-st.markdown("최근 4일 거래량 가중 변동폭 및 20일 이평선 결합 모델 + 지난주 실제 수익률 리얼 백테스팅")
+st.title("📊 GAPS ETF 대시보드 [V10 - 마스터 버전]")
+st.markdown("거래량 가중 모델 기반 수익률 최적화 및 기간별 성과 검증 시스템")
 
-@st.cache_data(ttl=21600, show_spinner="⏳ 거래량·추세 분석 및 지난주 모의투자 시뮬레이션 중... (약 1분 소요)")
+@st.cache_data(ttl=21600, show_spinner="⏳ 전 종목 10년치 주가 분석 및 1달치 시뮬레이션 수행 중... (약 1분 소요)")
 def run_full_analysis(df_raw):
     ticker_dict = {}
     header_idx = -1
@@ -25,97 +25,68 @@ def run_full_analysis(df_raw):
         columns_row = df_raw.iloc[header_idx].fillna('').astype(str).str.strip().str.replace('\n', '')
         df_data = df_raw.iloc[header_idx+1:].copy()
         df_data.columns = columns_row
-
         t_col = next((str(c) for c in df_data.columns if '티커' in str(c) or '종목' in str(c)), str(df_data.columns[0]))
         n_col = next((str(c) for c in df_data.columns if 'ETF' in str(c) or '명' in str(c)), str(df_data.columns[1]) if len(df_data.columns) > 1 else str(df_data.columns[0]))
         c2_col = next((str(c) for c in df_data.columns if '구분2' in str(c)), str(df_data.columns[-1]))
 
         for _, row in df_data.iterrows():
             ticker = str(row[t_col]).strip()
-            name = str(row[n_col]).strip()
-            category = str(row[c2_col]).strip()
-
             if ticker.upper().startswith('A'): ticker = ticker[1:]
             if len(ticker) == 6 and ticker.isalnum():
-                ticker_dict[ticker] = {'name': name, 'category': category}
+                ticker_dict[ticker] = {'name': str(row[n_col]).strip(), 'category': str(row[c2_col]).strip()}
 
     summary_results = []
+    
     end_date = datetime.today().strftime('%Y-%m-%d')
     start_date = (datetime.today() - timedelta(days=365*10)).strftime('%Y-%m-%d')
 
     for ticker, info in ticker_dict.items():
         try:
-            # 주가와 함께 거래량(Volume) 데이터도 함께 로드
             df = fdr.DataReader(ticker, start_date, end_date)[['Close', 'Volume']].rename(columns={'Close': 'Price'})
             if len(df) < 40: continue
 
             df['Price_Change'] = df['Price'].pct_change()
-            
-            # [개선 2] 거래량 지표 추가: 20일 평균 거래량 대비 오늘 거래량 비율 계산
             df['Vol_MA20'] = df['Volume'].rolling(20).mean()
-            df['Vol_Ratio'] = df['Volume'] / df['Vol_MA20']
-            df['Vol_Ratio'] = df['Vol_Ratio'].fillna(1.0).replace([np.inf, -np.inf], 1.0)
-            df['Vol_Weight'] = np.clip(df['Vol_Ratio'], 0.5, 3.0) # 극단값 억제 클리핑
+            df['Vol_Ratio'] = np.clip(df['Volume'] / df['Vol_MA20'], 0.5, 3.0).fillna(1.0)
+            df['VW_Change'] = df['Price_Change'] * df['Vol_Ratio']
             
-            # 거래량이 터진 날의 변동폭에 더 큰 가중치를 주는 변동폭 생성
-            df['VW_Change'] = df['Price_Change'] * df['Vol_Weight']
+            df['Weight_Score'] = (df['VW_Change'] * 0.4 + df['VW_Change'].shift(1) * 0.3 + 
+                                  df['VW_Change'].shift(2) * 0.2 + df['VW_Change'].shift(3) * 0.1)
             
-            # 선형 가중치 스코어 산출
-            df['Weight_Score'] = (
-                df['VW_Change'] * 0.4 +
-                df['VW_Change'].shift(1) * 0.3 +
-                df['VW_Change'].shift(2) * 0.2 +
-                df['VW_Change'].shift(3) * 0.1
-            )
-            
-            # [개선 3] 20일 이동평균선 장기 추세 필터 정의
             df['MA20'] = df['Price'].rolling(20).mean()
             df['Trend'] = np.where(df['Price'] >= df['MA20'], "🟢상승세", "🔴하락세")
-            
             df['Next_Return'] = df['Price_Change'].shift(-1)
             df_clean = df.dropna(subset=['Weight_Score'])
-            
-            if len(df_clean) < 25: continue
 
-            # --- 1. 오늘 자 마감 기준 내일 기대수익률 예측 (전체 데이터 이용) ---
+            # 회귀 분석 (전체 데이터)
             df_for_pred = df_clean.dropna(subset=['Next_Return'])
-            slope_all, intercept_all = np.polyfit(df_for_pred['Weight_Score'], df_for_pred['Next_Return'], 1)
-            
-            current_score = df_clean['Weight_Score'].iloc[-1]
-            predicted_next_return = (intercept_all + slope_all * current_score) * 100
-            correlation = df_for_pred['Weight_Score'].corr(df_for_pred['Next_Return'])
-            current_trend = df_clean['Trend'].iloc[-1]
+            slope, intercept = np.polyfit(df_for_pred['Weight_Score'], df_for_pred['Next_Return'], 1)
+            curr_score = df_clean['Weight_Score'].iloc[-1]
+            pred_ret = (intercept + slope * curr_score) * 100
+            corr = df_for_pred['Weight_Score'].corr(df_for_pred['Next_Return'])
 
-            # --- 2. [신설] 5영업일 전(지난주 시작점) 모의투자 백테스팅 데이터 산출 ---
-            # 지난주 5일간의 실제 누적 수익률 계산
-            actual_5d_return = (df['Price'].iloc[-1] / df['Price'].iloc[-5] - 1) * 100
-            
-            # 5영업일 전 시점까지의 데이터만 잘라서 회귀선 도출 (미래 데이터 오염 방지)
-            df_past = df_clean.iloc[:-5]
-            df_past_clean = df_past.dropna(subset=['Next_Return'])
-            
-            if len(df_past_clean) > 15:
-                slope_5d, intercept_5d = np.polyfit(df_past_clean['Weight_Score'], df_past_clean['Next_Return'], 1)
-                # 5영업일 전 날짜의 가중치 점수를 대입하여 '당시 모델의 내일 기대수익률 예측치' 계산
-                pred_return_5d = (intercept_5d + slope_5d * df_clean['Weight_Score'].iloc[-5]) * 100
-            else:
-                pred_return_5d = np.nan
+            # 기간별 실제 누적 수익률 (1주=5일, 2주=10일, 1달=20일)
+            ret_1w = (df['Price'].iloc[-1] / df['Price'].iloc[-6] - 1) * 100 if len(df) >= 6 else 0
+            ret_2w = (df['Price'].iloc[-1] / df['Price'].iloc[-11] - 1) * 100 if len(df) >= 11 else 0
+            ret_1m = (df['Price'].iloc[-1] / df['Price'].iloc[-21] - 1) * 100 if len(df) >= 21 else 0
+
+            # 시점별 모델 예측치 (과거 회귀선 기준)
+            def get_old_pred(days_ago):
+                df_past = df_clean.iloc[:-days_ago]
+                if len(df_past) < 20: return np.nan
+                s, i = np.polyfit(df_past.dropna(subset=['Next_Return'])['Weight_Score'], 
+                                  df_past.dropna(subset=['Next_Return'])['Next_Return'], 1)
+                return (i + s * df_clean['Weight_Score'].iloc[-days_ago]) * 100
 
             summary_results.append({
-                '종목코드': 'A' + ticker, 
-                'ETF명': info['name'], 
-                '카테고리': info['category'],
-                '현재 장기추세(20MA)': current_trend,
-                '현재 가중치 스코어': f"{current_score*100:.2f}%",
-                '내일 기대수익률': round(predicted_next_return, 4),
-                '모델 신뢰도': round(correlation, 2),
-                '지난주 모델 예측치(5d전)': pred_return_5d,
-                '지난주 실제 누적수익률': actual_5d_return
+                '종목코드': 'A' + ticker, 'ETF명': info['name'], '카테고리': info['category'],
+                '현재추세': df_clean['Trend'].iloc[-1], '마감 가중치 스코어': curr_score * 100,
+                '내일 기대수익률': pred_ret, '상관성(모델신뢰도)': corr,
+                'ret_5d': ret_1w, 'ret_10d': ret_2w, 'ret_20d': ret_1m,
+                'pred_5d': get_old_pred(5), 'pred_10d': get_old_pred(10), 'pred_20d': get_old_pred(20)
             })
         except: pass
-
-    df_final = pd.DataFrame(summary_results)
-    return df_final
+    return pd.DataFrame(summary_results)
 
 csv_filename = "gaps_etf_list.csv"
 
@@ -129,89 +100,75 @@ if os.path.exists(csv_filename):
 
     if df_raw is not None:
         df_analysis = run_full_analysis(df_raw)
-        st.sidebar.success(f"📂 분석 완료! (종목: {len(df_analysis)}개)")
+        st.sidebar.success("📂 분석 완료")
         
-        tab1, tab2, tab3 = st.tabs(["🏆 섹션별 기대수익률 TOP 3", "🌲 [숲 보기] 지난주 모의투자 성과 비교", "🔍 종목 상세조회"])
+        # 탭 구성
+        tab1, tab2, tab3, tab4 = st.tabs(["🏆 섹션별 TOP 3", "🌲 모의투자 성과비교", "🔍 종목 상세조회", "📖 용어 가이드"])
 
-        # [탭 1] 메인 화면
+        # [탭 1] 섹션별 추천
         with tab1:
-            st.markdown("### 📈 내일 자 기대수익률 최적화 포트폴리오 추천")
-            st.caption("개선 포인트: 거래량이 동반된 주가 변동폭에 가중치를 부여하고 20일 이동평균선(장기추세) 상태를 반영했습니다.")
-            
-            unique_categories = df_analysis['카테고리'].unique()
-            cat_chunks = [unique_categories[i:i + 2] for i in range(0, len(unique_categories), 2)]
-            
-            for chunk in cat_chunks:
+            st.subheader("📈 내일 자 기대수익률 최적화 추천")
+            unique_cats = df_analysis['카테고리'].unique()
+            for i in range(0, len(unique_cats), 2):
                 cols = st.columns(2)
-                for i, cat in enumerate(chunk):
-                    with cols[i]:
-                        st.subheader(f"📂 {cat} 섹션 Top 3")
-                        df_cat = df_analysis[df_analysis['카테고리'] == cat]
-                        df_cat_top3 = df_cat.sort_values(by='내일 기대수익률', ascending=False).head(3).reset_index(drop=True)
-                        df_cat_top3.index = df_cat_top3.index + 1
-                        
-                        df_display = df_cat_top3[['ETF명', '현재 장기추세(20MA)', '현재 가중치 스코어', '내일 기대수익률']].copy()
-                        df_display['내일 기대수익률'] = df_display['내일 기대수익률'].apply(lambda x: f"{x:.2f}%")
-                        st.dataframe(df_display, use_container_width=True)
+                for j, cat in enumerate(unique_cats[i:i+2]):
+                    with cols[j]:
+                        st.markdown(f"#### 📂 {cat}")
+                        df_cat = df_analysis[df_analysis['카테고리'] == cat].sort_values(by='내일 기대수익률', ascending=False).head(3).reset_index(drop=True)
+                        df_cat.index += 1
+                        st.dataframe(df_cat[['ETF명', '현재추세', '내일 기대수익률']].style.format({'내일 기대수익률': '{:.2f}%'}), use_container_width=True)
 
-        # [탭 2] 숲 보기: 지난주 모의투자 성과 비교 (회원님 핵심 요청 사항)
+        # [탭 2] 성과 비교 (1주, 2주, 1달 선택)
         with tab2:
-            st.subheader("🌲 [숲 보기] 지난주 모델 예측 포트폴리오 vs 시장 최고 수익률 비교")
-            st.markdown("과거 섹터 통계와 무관하게, 오직 **'최종 계좌 수익률 극대화'** 관점에서 지난 일주일(5영업일)간의 모델 성적을 복기합니다.")
+            st.subheader("🌲 과거 시점 모델 예측 vs 실제 성과 비교")
+            period = st.radio("검증 기간 선택:", ["1주 (5영업일)", "2주 (10영업일)", "1달 (20영업일)"], horizontal=True)
             
-            if not df_analysis.empty:
-                # 유효한 백테스트 샘플 추출
-                df_bt = df_analysis.dropna(subset=['지난주 모델 예측치(5d전)', '지난주 실제 누적수익률'])
-                
-                # 1. 5일 전 시점에 모델이 전체 시장에서 가장 유망하다고 찍었던 탑 5 종목 (섹터 통합)
-                df_model_picks = df_bt.sort_values(by='지난주 모델 예측치(5d전)', ascending=False).head(5).reset_index(drop=True)
-                df_model_picks.index = df_model_picks.index + 1
-                
-                # 2. 지난 5일 동안 실제로 전체 시장에서 가장 높은 누적 수익률을 기록한 진짜 정답 탑 5 종목
-                df_market_winners = df_bt.sort_values(by='지난주 실제 누적수익률', ascending=False).head(5).reset_index(drop=True)
-                df_market_winners.index = df_market_winners.index + 1
-                
-                # 핵심 요약 지표 (Metric) 출력
-                avg_model_return = df_model_picks['지난주 실제 누적수익률'].mean()
-                max_market_return = df_market_winners['지난주 실제 누적수익률'].mean()
-                avg_market_return = df_bt['지난주 실제 누적수익률'].mean()
-                
-                m1, m2, m3 = st.columns(3)
-                m1.metric("🤖 지난주 모델 추천포트폴리오 평균수익률", f"{avg_model_return:.2f}%")
-                m2.metric("👑 지난주 시장 최고존엄(Top5) 평균수익률", f"{max_market_return:.2f}%")
-                m3.metric("📊 전체 ETF 유니버스 전체 평균수익률", f"{avg_market_return:.2f}%")
-                
-                st.markdown("---")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("#### 🤖 5영업일 전 우리 모델이 베팅했던 종목군과 실제 성과")
-                    st.caption("지난주 월요일 아침 기준, 모델 예측치가 가장 높았던 상위 5개 종목의 실제 일주일 누적 성적표입니다.")
-                    df_model_disp = df_model_picks[['카테고리', 'ETF명', '지난주 모델 예측치(5d전)', '지난주 실제 누적수익률']].copy()
-                    df_model_disp['지난주 모델 예측치(5d전)'] = df_model_disp['지난주 모델 예측치(5d전)'].apply(lambda x: f"{x:.3f}%")
-                    df_model_disp['지난주 실제 누적수익률'] = df_model_disp['지난주 실제 누적수익률'].apply(lambda x: f"{x:.2f}%")
-                    st.dataframe(df_model_disp, use_container_width=True)
-                    
-                with col2:
-                    st.markdown("#### 👑 지난 일주일 동안 실제 최고 수익률을 낸 종목군 (정답지)")
-                    st.caption("섹터 불문하고 지난주 시장을 완벽하게 씹어먹은 실제 누적수익률 상위 5개 종목입니다.")
-                    df_winner_disp = df_market_winners[['카테고리', 'ETF명', '지난주 실제 누적수익률', '지난주 모델 예측치(5d전)']].copy()
-                    df_winner_disp['지난주 실제 누적수익률'] = df_winner_disp['지난주 실제 누적수익률'].apply(lambda x: f"{x:.2f}%")
-                    df_winner_disp['지난주 모델 예측치(5d전)'] = df_winner_disp['지난주 모델 예측치(5d전)'].apply(lambda x: f"{x:.3f}%" if not pd.isna(x) else "-")
-                    st.dataframe(df_winner_disp, use_container_width=True)
-                    
-                st.info(f"💡 **숲 보기 피드백**: 모델 픽 평균 수익률({avg_model_return:.2f}%)이 시장 전체 평균({avg_market_return:.2f}%)보다 높다면, 우리 모델은 시장보다 우월한 자산 배분 능력을 입증한 것입니다. 이제 우측 정답지 종목들과 모델 픽 간의 교집합을 넓히는 방향으로 가중치를 다듬어가면 됩니다.")
+            p_code = "5d" if "1주" in period else ("10d" if "2주" in period else "20d")
+            
+            df_bt = df_analysis.dropna(subset=[f'pred_{p_code}', f'ret_{p_code}'])
+            df_model_picks = df_bt.sort_values(by=f'pred_{p_code}', ascending=False).head(5)
+            df_market_winners = df_bt.sort_values(by=f'ret_{p_code}', ascending=False).head(5)
+            
+            m1, m2, m3 = st.columns(3)
+            m1.metric(f"🤖 {period} 전 모델 추천 평균", f"{df_model_picks[f'ret_{p_code}'].mean():.2f}%")
+            m2.metric(f"👑 {period} 실제 시장 TOP 5 평균", f"{df_market_winners[f'ret_{p_code}'].mean():.2f}%")
+            m3.metric(f"📊 {period} 전체 ETF 평균", f"{df_bt[f'ret_{p_code}'].mean():.2f}%")
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"#### 🤖 {period} 전 모델의 원픽들")
+                st.dataframe(df_model_picks[['ETF명', f'pred_{p_code}', f'ret_{p_code}']].rename(columns={f'pred_{p_code}': '당시 예측치', f'ret_{p_code}': '실제 누적수익률'}).style.format({'당시 예측치': '{:.2f}%', '실제 누적수익률': '{:.2f}%'}), use_container_width=True)
+            with c2:
+                st.markdown(f"#### 👑 {period} 동안 실제 수익률 1위들")
+                st.dataframe(df_market_winners[['ETF명', f'ret_{p_code}', f'pred_{p_code}']].rename(columns={f'pred_{p_code}': '당시 예측치', f'ret_{p_code}': '실제 누적수익률'}).style.format({'당시 예측치': '{:.2f}%', '실제 누적수익률': '{:.2f}%'}), use_container_width=True)
 
-        # [탭 3] 상세 조회
-        with tab2:
-            st.subheader("🔍 ETF 개별 종목 회귀 모델 정밀 조회")
-            if not df_analysis.empty:
-                selected_name = st.selectbox("조회할 ETF 종목을 선택하세요:", df_analysis['ETF명'].tolist(), key="tab3_select")
-                etf_info = df_analysis[df_analysis['ETF명'] == selected_name].iloc[0]
-                
-                m1, m2, m3 = st.columns(3)
-                m1.metric("현재 마감 가중치 스코어(WMA)", f"{etf_info['현재 가중치 스코어']}")
-                m2.metric("★ 내일 예측 기대수익률", f"{etf_info['내일 기대수익률']:.2f}%")
-                m3.metric("모델 신뢰도 (상관성)", f"{etf_info['모델 신뢰도']}")
-else:
-    st.sidebar.error(f"❌ `{csv_filename}` 파일을 찾을 수 없습니다.")
+        # [탭 3] 종목 상세조회 (복구 완료!)
+        with tab3:
+            st.subheader("🔍 ETF 개별 종목 정밀 분석")
+            target_etf = st.selectbox("종목을 선택하세요:", df_analysis['ETF명'].unique())
+            row = df_analysis[df_analysis['ETF명'] == target_etf].iloc[0]
+            
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("현재 추세", row['현재추세'])
+            col_b.metric("내일 예측 수익률", f"{row['내일 기대수익률']:.2f}%")
+            col_c.metric("상관성 (모델 신뢰도)", f"{row['상관성(모델신뢰도)']:.2f}")
+            
+            st.markdown("---")
+            st.markdown("#### 📈 최근 1년 주가 흐름")
+            raw_t = row['종목코드'].replace('A', '')
+            try:
+                df_chart = fdr.DataReader(raw_t, (datetime.today() - timedelta(days=365)).strftime('%Y-%m-%d'))[['Close']].rename(columns={'Close': '주가'})
+                st.line_chart(df_chart, use_container_width=True)
+            except: st.error("차트를 불러올 수 없습니다.")
+
+        # [탭 4] 용어 가이드 (팀원 설명용)
+        with tab4:
+            st.subheader("📖 대시보드 용어 및 원리 가이드")
+            with st.expander("1. 마감 가중치 스코어 (Closing Weight Score)란?"):
+                st.write("단순히 올랐다 내렸다가 아니라, **거래량이 터지면서 강하게 움직인 날에 가중치**를 더 준 점수입니다. 최근 4일간의 에너지를 40%, 30%, 20%, 10% 비율로 합산하여 계산합니다.")
+            with st.expander("2. 내일 기대 예측수익률 (Expected Return)이란?"):
+                st.write("과거 10년 동안 현재와 비슷한 '가중치 스코어'가 발생했을 때, **그다음 날 주가가 실제로 평균 몇 %나 움직였는지** 통계적으로 추정한 값입니다.")
+            with st.expander("3. 상관성 (Correlation)이란?"):
+                st.write("이 종목이 우리 모델의 예측을 얼마나 정직하게 잘 따르는지를 나타내는 수치입니다. **1에 가까울수록 모델이 예측한 대로 움직일 가능성이 높다는 신뢰의 지표**입니다.")
+            with st.expander("4. 성과 비교 탭은 어떻게 보나요?"):
+                st.write("과거 1주/2주/1달 전으로 돌아가서 '그 당시 모델의 눈'으로 종목을 뽑아보고, 그 종목들이 실제로 오늘까지 얼마나 수익을 냈는지 '진짜 정답'과 비교하는 공간입니다.")
