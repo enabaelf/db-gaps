@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V22 - 앙상블(Ensemble) 동적 가중치 모델]")
-st.markdown("💡 1~4일의 패턴 기댓값을 단순히 평균 내지 않고, **최근 시장에서 어느 패턴의 기댓값이 가장 정확했는지 '다중 회귀'로 학습하여 최적의 가중치를 자동 배분**하는 모델입니다.")
+st.title("🥇 GAPS ETF 대시보드 [V22 - 앙상블 동적 가중치 + 리스크/상관 지표]")
+st.markdown("💡 1~4일의 패턴 기댓값을 다중 회귀로 학습하는 앙상블 모델에 **각 종목별 표준편차(변동성) 및 모델 예측 상관계수**를 추가하여 직관성을 높였습니다.")
 
 # --- 대회 룰 기반 포트폴리오 최적화 알고리즘 ---
 def optimize_portfolio(df_predictions, target_col='Pred'):
@@ -69,7 +69,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
         
     return pd.DataFrame(portfolio)
 
-@st.cache_data(ttl=21600, show_spinner="⏳ 패턴 족보 추출 및 앙상블 회귀 가중치 계산 중... (약 1분 소요)")
+@st.cache_data(ttl=21600, show_spinner="⏳ 패턴 족보 추출 및 통계 지표 계산 중... (약 1분 소요)")
 def run_full_analysis(df_raw):
     ticker_dict = {}
     header_idx = -1
@@ -116,7 +116,9 @@ def run_full_analysis(df_raw):
             df_clean = df.dropna(subset=['L4', 'Next_Return']).copy()
             if len(df_clean) < 100: continue
             
-            # 1. 10년 치 데이터 기반 1~4일 독립적인 패턴 기댓값 맵핑
+            # --- 표준편차(연간 변동성) 계산 ---
+            annual_std_dev = df_clean['Price_Change'].std() * np.sqrt(252) * 100
+            
             e1_map = df_clean.groupby('L1')['Next_Return'].mean().to_dict()
             e2_map = df_clean.groupby(['L1', 'L2'])['Next_Return'].mean().to_dict()
             e3_map = df_clean.groupby(['L1', 'L2', 'L3'])['Next_Return'].mean().to_dict()
@@ -127,7 +129,6 @@ def run_full_analysis(df_raw):
             df_clean['E3'] = df_clean.set_index(['L1', 'L2', 'L3']).index.map(e3_map.get).fillna(0.0)
             df_clean['E4'] = df_clean.set_index(['L1', 'L2', 'L3', 'L4']).index.map(e4_map.get).fillna(0.0)
             
-            # 2. [핵심] 최근 500일 데이터를 바탕으로 다중 회귀 돌려서 각 패턴 기댓값의 최적 가중치(w1, w2, w3, w4) 도출
             fit_window = min(len(df_clean), 500)
             df_fit = df_clean.tail(fit_window)
             
@@ -140,9 +141,12 @@ def run_full_analysis(df_raw):
             intercept = coeffs[0]
             w1, w2, w3, w4 = coeffs[1:]
             
-            # 3. 모델이 찾은 가중치를 기댓값에 곱해서 최종 앙상블 예측치 생성
             df_clean['Final_Pred'] = (intercept + df_clean['E1']*w1 + df_clean['E2']*w2 + df_clean['E3']*w3 + df_clean['E4']*w4) * 100
             df_clean['Actual'] = df_clean['Next_Return'] * 100
+            
+            # --- 예측 상관계수 계산 ---
+            correlation = df_clean['Final_Pred'].corr(df_clean['Actual'])
+            if pd.isna(correlation): correlation = 0.0
             
             df_hist = df_clean.dropna(subset=['Actual']).tail(20)
             for date, row in df_hist.iterrows():
@@ -157,7 +161,8 @@ def run_full_analysis(df_raw):
 
             summary_results.append({
                 '종목코드': 'A' + ticker, 'ETF명': info['name'], '카테고리': info['category'],
-                '현재추세': df['Trend'].iloc[-1], '앙상블 기대수익률': final_pred_return
+                '현재추세': df['Trend'].iloc[-1], '앙상블 기대수익률(%)': final_pred_return,
+                '연간 표준편차(%)': annual_std_dev, '모델 상관계수': correlation
             })
         except: pass
         
@@ -186,7 +191,7 @@ if os.path.exists(csv_filename):
 
         with tab1:
             st.subheader("🎯 오늘 자 최적화 포트폴리오 비중")
-            df_pred_today = df_analysis.rename(columns={'앙상블 기대수익률': 'Pred'})
+            df_pred_today = df_analysis.rename(columns={'앙상블 기대수익률(%)': 'Pred'})
             optimal_portfolio = optimize_portfolio(df_pred_today, target_col='Pred')
             
             risk_sum = float(optimal_portfolio[optimal_portfolio['자산군'] == '위험']['추천비중(%)'].sum())
@@ -199,16 +204,20 @@ if os.path.exists(csv_filename):
             st.dataframe(optimal_portfolio[['자산군', '카테고리', 'ETF명', '추천비중(%)', '기대수익률(%)']].style.format({'추천비중(%)': '{:.1f}%', '기대수익률(%)': '{:.3f}%'}), use_container_width=True)
 
         with tab2:
-            st.subheader("🏆 카테고리별 앙상블 예측 수익률 TOP 3")
+            st.subheader("🏆 카테고리별 앙상블 예측 수익률 TOP 3 (통계 지표 포함)")
             unique_cats = df_analysis['카테고리'].unique()
             for i in range(0, len(unique_cats), 2):
                 cols = st.columns(2)
                 for j, cat in enumerate(unique_cats[i:i+2]):
                     with cols[j]:
                         st.markdown(f"#### 📂 {cat}")
-                        df_cat = df_analysis[df_analysis['카테고리'] == cat].sort_values(by='앙상블 기대수익률', ascending=False).head(3).reset_index(drop=True)
+                        df_cat = df_analysis[df_analysis['카테고리'] == cat].sort_values(by='앙상블 기대수익률(%)', ascending=False).head(3).reset_index(drop=True)
                         df_cat.index += 1
-                        st.dataframe(df_cat[['ETF명', '현재추세', '앙상블 기대수익률']].style.format({'앙상블 기대수익률': '{:.3f}%'}), use_container_width=True)
+                        st.dataframe(df_cat[['ETF명', '현재추세', '앙상블 기대수익률(%)', '연간 표준편차(%)', '모델 상관계수']].style.format({
+                            '앙상블 기대수익률(%)': '{:.3f}%',
+                            '연간 표준편차(%)': '{:.1f}%',
+                            '모델 상관계수': '{:.3f}'
+                        }), use_container_width=True)
 
         with tab3:
             st.subheader("🔥 규정 비율 매일 리밸런싱 백테스트")
@@ -252,13 +261,15 @@ if os.path.exists(csv_filename):
                 st.line_chart(df_chart, use_container_width=True)
 
         with tab4:
-            st.subheader("🔍 ETF 개별 종목 정밀 분석 및 기술적 지표 차트")
+            st.subheader("🔍 ETF 개별 종목 정밀 분석 및 통계 지표")
             target_etf = st.selectbox("종목을 선택하세요:", df_analysis['ETF명'].unique())
             row = df_analysis[df_analysis['ETF명'] == target_etf].iloc[0]
             
-            col_a, col_b = st.columns(2)
-            col_a.metric("현재 추세", row['현재추세'])
-            col_b.metric("내일 앙상블 기대수익률", f"{row['앙상블 기대수익률']:.3f}%")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("현재 추세", row['현재추세'])
+            c2.metric("내일 앙상블 기대수익률", f"{row['앙상블 기대수익률(%)']:.3f}%")
+            c3.metric("연간 표준편차 (변동성)", f"{row['연간 표준편차(%)']:.1f}%")
+            c4.metric("모델 예측 상관계수", f"{row['모델 상관계수']:.3f}")
             
             ticker_clean = str(row['종목코드']).replace('A', '')
             try:
