@@ -8,8 +8,15 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V24 - 캘린더 & 투명 백테스트 모델]")
-st.markdown("💡 10년 치 전체 데이터를 활용하여 앙상블 가중치를 계산하며, 캘린더를 통해 과거 특정 시점의 **포트폴리오 편입 내역과 실제 수익 창출 과정**을 투명하게 조회할 수 있습니다.")
+st.title("🥇 GAPS ETF 대시보드 [V25 - 학습 기간 동적 선택 모델]")
+st.markdown("💡 좌측 사이드바에서 **앙상블 모델의 회귀 가중치 학습 기간(500일, 1000일, 10년)**을 선택하여 최근 시장 트렌드에 대한 모델의 민감도를 직접 조절할 수 있습니다.")
+
+# --- 좌측 사이드바 설정 ---
+st.sidebar.header("⚙️ 앙상블 모델 설정")
+train_window_option = st.sidebar.selectbox(
+    "학습 데이터 기간 (가중치 산출용)",
+    ["10년 (전체 데이터)", "1000 영업일 (약 4년)", "500 영업일 (약 2년)"]
+)
 
 # --- 대회 룰 기반 포트폴리오 최적화 알고리즘 ---
 def optimize_portfolio(df_predictions, target_col='Pred'):
@@ -69,8 +76,8 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
         
     return pd.DataFrame(portfolio)
 
-@st.cache_data(ttl=21600, show_spinner="⏳ 10년 치 전체 데이터 기반 앙상블 회귀 가중치 계산 중... (약 1분 소요)")
-def run_full_analysis(df_raw):
+@st.cache_data(ttl=21600, show_spinner="⏳ 선택한 기간의 데이터로 앙상블 회귀 가중치 계산 중... (약 1분 소요)")
+def run_full_analysis(df_raw, train_window_option):
     ticker_dict = {}
     header_idx = -1
     for idx, row in df_raw.iterrows():
@@ -118,6 +125,7 @@ def run_full_analysis(df_raw):
             
             annual_std_dev = df_clean['Price_Change'].std() * np.sqrt(252) * 100
             
+            # 패턴별 기댓값은 통계적 유의성을 위해 10년 전체 데이터를 사용하여 산출
             e1_map = df_clean.groupby('L1')['Next_Return'].mean().to_dict()
             e2_map = df_clean.groupby(['L1', 'L2'])['Next_Return'].mean().to_dict()
             e3_map = df_clean.groupby(['L1', 'L2', 'L3'])['Next_Return'].mean().to_dict()
@@ -128,8 +136,15 @@ def run_full_analysis(df_raw):
             df_clean['E3'] = df_clean.set_index(['L1', 'L2', 'L3']).index.map(e3_map.get).fillna(0.0)
             df_clean['E4'] = df_clean.set_index(['L1', 'L2', 'L3', 'L4']).index.map(e4_map.get).fillna(0.0)
             
-            # --- [사용자 요청 반영: 500일 제한 삭제, 10년 치 전체 데이터를 회귀에 투입] ---
-            df_fit = df_clean.copy() 
+            # --- [사용자 요청 반영: 사이드바 옵션에 따라 회귀 학습 기간 동적 조절] ---
+            if "500" in train_window_option:
+                fit_window = min(len(df_clean), 500)
+                df_fit = df_clean.tail(fit_window)
+            elif "1000" in train_window_option:
+                fit_window = min(len(df_clean), 1000)
+                df_fit = df_clean.tail(fit_window)
+            else:
+                df_fit = df_clean.copy() # 10년 전체
             
             X_fit = df_fit[['E1', 'E2', 'E3', 'E4']].values
             y_fit = df_fit['Next_Return'].values
@@ -140,13 +155,13 @@ def run_full_analysis(df_raw):
             intercept = coeffs[0]
             w1, w2, w3, w4 = coeffs[1:]
             
+            # 산출된 가중치(w)를 전체 데이터에 적용하여 최종 기댓값 생성
             df_clean['Final_Pred'] = (intercept + df_clean['E1']*w1 + df_clean['E2']*w2 + df_clean['E3']*w3 + df_clean['E4']*w4) * 100
             df_clean['Actual'] = df_clean['Next_Return'] * 100
             
             correlation = df_clean['Final_Pred'].corr(df_clean['Actual'])
             if pd.isna(correlation): correlation = 0.0
             
-            # 백테스트를 위해 과거 데이터를 좀 더 넉넉하게 저장 (60영업일)
             df_hist = df_clean.dropna(subset=['Actual']).tail(60)
             for date, row in df_hist.iterrows():
                 daily_records.append({
@@ -178,8 +193,9 @@ if os.path.exists(csv_filename):
         except: continue
 
     if df_raw is not None:
-        df_analysis, df_daily = run_full_analysis(df_raw)
-        st.sidebar.success("📂 V24 투명 백테스트 엔진(10년 전체학습) 로드 완료")
+        # 사이드바에서 선택한 옵션을 함수에 파라미터로 넘겨줌 (캐시 자동 갱신 트리거)
+        df_analysis, df_daily = run_full_analysis(df_raw, train_window_option)
+        st.sidebar.success(f"📂 V25 앙상블 엔진 로드 완료 ({train_window_option} 기준)")
         
         tab1, tab2, tab3, tab4 = st.tabs([
             "🎯 오늘의 실전 매수 비중", 
@@ -220,7 +236,6 @@ if os.path.exists(csv_filename):
         with tab3:
             st.subheader("🔥 캘린더 연동 타임머신 백테스트")
             
-            # --- [사용자 요청 반영: 캘린더 기반 기준일 선택 UI] ---
             if not df_daily.empty:
                 valid_dates = sorted(df_daily['Date'].unique())
                 min_date = datetime.strptime(valid_dates[0], '%Y-%m-%d').date()
@@ -235,7 +250,6 @@ if os.path.exists(csv_filename):
                 target_date_str = target_date.strftime('%Y-%m-%d')
                 days = 1 if "1일" in period else (5 if "1주" in period else (10 if "2주" in period else 20))
                 
-                # 선택한 기준일 이전의 데이터만 필터링
                 df_filtered = df_daily[df_daily['Date'] <= target_date_str]
                 
                 if df_filtered.empty or len(df_filtered['Date'].unique()) == 0:
@@ -245,23 +259,20 @@ if os.path.exists(csv_filename):
                     df_period = df_filtered[df_filtered['Date'].isin(unique_dates)]
                     
                     daily_model_returns, daily_market_returns, daily_max_returns, dates_list = [], [], [], []
-                    target_date_portfolio = None # 기준일의 포트폴리오를 담을 변수
+                    target_date_portfolio = None 
                     
                     for d in unique_dates:
                         df_d = df_period[df_period['Date'] == d]
                         
-                        # 모델 최적화 포트폴리오
                         past_portfolio = optimize_portfolio(df_d, target_col='Pred')
                         daily_port_return = float((past_portfolio['추천비중(%)'] / 100 * past_portfolio['실제수익률(%)'].fillna(0)).sum())
                         daily_model_returns.append(daily_port_return / 100)
                         
                         if d == unique_dates[-1]:
-                            target_date_portfolio = past_portfolio # 마지막 날(기준일)의 포트폴리오 상세 내역 캡처
+                            target_date_portfolio = past_portfolio 
                         
-                        # 시장 평균 (1/N)
                         daily_market_returns.append(float(df_d['Actual'].mean() / 100))
                         
-                        # 신의 영역 (정답 기반)
                         max_portfolio = optimize_portfolio(df_d, target_col='Actual')
                         daily_max_return = float((max_portfolio['추천비중(%)'] / 100 * max_portfolio['실제수익률(%)'].fillna(0)).sum())
                         daily_max_returns.append(daily_max_return / 100)
@@ -286,12 +297,10 @@ if os.path.exists(csv_filename):
                     }, index=dates_list)
                     st.line_chart(df_chart, use_container_width=True)
 
-                    # --- [사용자 요청 반영: 매매 내역 투명화 UI] ---
                     st.markdown(f"### 🔍 기준일({dates_list[-1]})의 포트폴리오 매매 상세 내역")
                     st.caption("해당 날짜에 기댓값이 높았던 종목들을 어떤 비중으로 샀고, 다음날 실제 수익(Actual)으로 얼마나 이어졌는지 낱낱이 보여줍니다.")
                     
                     if target_date_portfolio is not None:
-                        # 현금 보유 등은 실제수익률이 0이므로 포맷팅 처리
                         st.dataframe(target_date_portfolio.style.format({
                             '추천비중(%)': '{:.1f}%', 
                             '앙상블 기댓값(%)': '{:.3f}%',
