@@ -8,8 +8,22 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V29 - 개별 종목 20% 상한 규정 반영]")
-st.markdown("💡 **대회 규정 완벽 준수:** 세부 자산군별 한도뿐만 아니라, **'개별 ETF 종목당 최대 편입비중 20%'** 마지노선 제약조건을 최적화 엔진에 추가했습니다.")
+st.title("🥇 GAPS ETF 대시보드 [V31 - 당일 마감 데이터 강제 갱신 모델]")
+st.markdown("💡 **실시간 데이터 동기화:** 장 마감 후 최신 데이터가 반영되지 않을 때, 좌측 사이드바의 **'강제 갱신'** 버튼을 누르면 캐시를 삭제하고 오늘 종가를 즉시 새로 불러옵니다.")
+
+# --- [신규 기능] 캐시 강제 초기화 버튼 ---
+st.sidebar.header("🔄 데이터 동기화")
+if st.sidebar.button("🔄 최신 데이터 강제 갱신", type="primary", use_container_width=True):
+    st.cache_data.clear()  # 기존에 저장된 6시간짜리 과거 캐시를 전부 날려버림
+    st.sidebar.success("⏳ 캐시가 초기화되었습니다! 최신 데이터를 다시 불러옵니다...")
+    st.rerun()
+
+# --- 수동 기록장용 파일 초기화 로직 ---
+log_filename = "actual_trade_history.csv"
+if not os.path.exists(log_filename):
+    df_log_init = pd.DataFrame(columns=['매매일자', '나의 실제 계좌수익률(%)', '당일 주력 매수 종목', '투자 복기 및 메모'])
+    df_log_init.loc[0] = [(datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d'), 0.0, "현금 보유", "기록장 시동! 여기에 어제 기록을 적으세요."]
+    df_log_init.to_csv(log_filename, index=False, encoding='utf-8-sig')
 
 # --- 좌측 사이드바 설정 ---
 st.sidebar.header("⚙️ 앙상블 모델 설정")
@@ -21,24 +35,22 @@ train_window_option = st.sidebar.selectbox(
 
 # --- 대회 룰 기반 포트폴리오 최적화 알고리즘 ---
 def optimize_portfolio(df_predictions, target_col='Pred'):
-    # 기댓값 높은 순으로 정렬
     df_sorted = df_predictions.sort_values(by=target_col, ascending=False)
     
     portfolio = []
-    total_budget = 100.0   # 총 자산 100%
-    risk_budget = 70.0     # 위험자산 총합 Max 70%
-    cat_alloc = {}         # 세부 자산군별 누적 비중 추적용
+    total_budget = 100.0   
+    risk_budget = 70.0     
+    cat_alloc = {}         
     
     has_actual = 'Actual' in df_predictions.columns
     
     for _, row in df_sorted.iterrows():
         if total_budget <= 0: break
-        if row[target_col] <= 0: break # 기댓값이 음수면 패스
+        if row[target_col] <= 0: break 
         
         raw_cat = str(row['카테고리']).replace(' ', '').replace('_', '')
         limit, asset_type, c_name = 10, '위험', '기타주식'
         
-        # 규정집 기반 세부자산 상한선 세팅
         if '국내' in raw_cat and '주식' in raw_cat and '지수' in raw_cat: limit, asset_type, c_name = 30, '위험', '국내주식_지수'
         elif '국내' in raw_cat and '주식' in raw_cat and '섹터' in raw_cat: limit, asset_type, c_name = 15, '위험', '국내주식_섹터'
         elif '해외' in raw_cat and '주식' in raw_cat and '지수' in raw_cat: limit, asset_type, c_name = 30, '위험', '해외주식_지수'
@@ -55,10 +67,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
         current_cat_alloc = cat_alloc.get(c_name, 0.0)
         available_cat = limit - current_cat_alloc
         
-        # --- [규정 핵심 반영] 총 남은 예산, 자산군 남은 한도, 그리고 '개별 종목 상한 20%' 중 최솟값 선택 ---
         weight = min(total_budget, available_cat, 20.0)
-        
-        # 위험자산인 경우 위험자산 총 버젯(70%) 제약 추가 고려
         if asset_type == '위험':
             weight = min(weight, risk_budget)
             
@@ -74,7 +83,6 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
             if asset_type == '위험': risk_budget -= weight
             cat_alloc[c_name] = current_cat_alloc + weight
 
-    # 남은 금액은 자동으로 현금 채움 (안전 자산)
     if total_budget > 0:
         portfolio.append({
             'ETF명': '현금보유 (Cash)', '카테고리': '현금', '자산군': '안전',
@@ -83,7 +91,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
         
     return pd.DataFrame(portfolio)
 
-@st.cache_data(ttl=21600, show_spinner="⏳ 10년 패턴 추출 및 최근 장세 가중치 동시 계산 중... (약 15초 소요)")
+@st.cache_data(ttl=21600, show_spinner="⏳ 10년 패턴 추출 및 최신 종가 데이터 반영 중... (약 15초 소요)")
 def run_full_analysis(df_raw, train_window_option):
     ticker_dict = {}
     header_idx = -1
@@ -195,13 +203,13 @@ if os.path.exists(csv_filename):
 
     if df_raw is not None:
         df_analysis, df_daily = run_full_analysis(df_raw, train_window_option)
-        st.sidebar.success(f"📂 V29 규정 준수 엔진 세팅 완료")
         
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "🎯 오늘의 실전 매수 비중", 
             "🏆 섹터별 기댓값 TOP 3", 
             "🔥 타임머신 백테스트 (상세내역)", 
-            "🔍 개별 종목 분석"
+            "🔍 개별 종목 분석",
+            "📝 나의 실전 매매 기록장"
         ])
 
         with tab1:
@@ -326,5 +334,40 @@ if os.path.exists(csv_filename):
                     st.line_chart(df_stock_chart, use_container_width=True)
             except Exception as e:
                 st.error(f"⚠️ 차트 로드 실패: {e}")
+
+        with tab5:
+            st.subheader("📝 나의 실전 매매 기록장 (Excel 스타일)")
+            st.markdown("""
+            💡 **사용 방법:**
+            1. 표 맨 아래 빈 행에 **매매일자, 실제 거둔 계좌수익률, 메모**를 적습니다.
+            2. 새로운 행이 필요하면 표 하단의 **`+ Add row`** 버튼을 누르세요.
+            3. 입력을 모두 마친 후 꼭 아래 **`💾 실전 매매 기록 저장하기`** 버튼을 눌러야 영구 보관됩니다!
+            """)
+            
+            df_user_log = pd.read_csv(log_filename)
+            edited_user_df = st.data_editor(
+                df_user_log, 
+                num_rows="dynamic", 
+                use_container_width=True
+            )
+            
+            if st.button("💾 실전 매매 기록 저장하기", type="primary"):
+                try:
+                    edited_user_df.to_csv(log_filename, index=False, encoding='utf-8-sig')
+                    st.success("🎉 기록이 `actual_trade_history.csv` 파일에 안전하게 영구 저장되었습니다!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"⚠️ 저장 중 오류 발생: {e}")
+                    
+            if len(edited_user_df) > 1:
+                st.divider()
+                st.subheader("📈 내가 기록한 실제 계좌 수익률 추이")
+                try:
+                    df_chart_user = edited_user_df.copy()
+                    df_chart_user['나의 실제 계좌수익률(%)'] = pd.to_numeric(df_chart_user['나의 실제 계좌수익률(%)']).fillna(0.0)
+                    df_chart_user = df_chart_user.sort_values(by='매매일자').set_index('매매일자')
+                    st.line_chart(df_chart_user[['나의 실제 계좌수익률(%)']])
+                except:
+                    pass
 else:
     st.sidebar.error(f"❌ `{csv_filename}` 파일을 찾을 수 없습니다.")
