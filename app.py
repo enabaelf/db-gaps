@@ -8,35 +8,37 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V28 - 하이브리드 데이터 윈도우 모델]")
-st.markdown("💡 **퀀트 최적화 구조:** 베이스 모멘텀 패턴(E1~E4)은 **10년 장기 데이터**로 신뢰도를 극대화하고, 패턴별 가중치(w)는 **최근 고정 기간**만 추적하여 장기 신뢰성과 단기 민감도를 모두 잡았습니다.")
+st.title("🥇 GAPS ETF 대시보드 [V29 - 개별 종목 20% 상한 규정 반영]")
+st.markdown("💡 **대회 규정 완벽 준수:** 세부 자산군별 한도뿐만 아니라, **'개별 ETF 종목당 최대 편입비중 20%'** 마지노선 제약조건을 최적화 엔진에 추가했습니다.")
 
 # --- 좌측 사이드바 설정 ---
 st.sidebar.header("⚙️ 앙상블 모델 설정")
 train_window_option = st.sidebar.selectbox(
     "최근 장세 반영 기간 (회귀 가중치용)",
     ["500 영업일 (약 2년)", "700 영업일 (약 2.8년)", "1000 영업일 (약 4년)"],
-    index=0  # 유저가 제안한 500일을 기본값으로 세팅
+    index=0
 )
 
 # --- 대회 룰 기반 포트폴리오 최적화 알고리즘 ---
 def optimize_portfolio(df_predictions, target_col='Pred'):
+    # 기댓값 높은 순으로 정렬
     df_sorted = df_predictions.sort_values(by=target_col, ascending=False)
     
     portfolio = []
-    total_budget = 100.0
-    risk_budget = 70.0
-    cat_alloc = {}
+    total_budget = 100.0   # 총 자산 100%
+    risk_budget = 70.0     # 위험자산 총합 Max 70%
+    cat_alloc = {}         # 세부 자산군별 누적 비중 추적용
     
     has_actual = 'Actual' in df_predictions.columns
     
     for _, row in df_sorted.iterrows():
         if total_budget <= 0: break
-        if row[target_col] <= 0: break 
+        if row[target_col] <= 0: break # 기댓값이 음수면 패스
         
         raw_cat = str(row['카테고리']).replace(' ', '').replace('_', '')
         limit, asset_type, c_name = 10, '위험', '기타주식'
         
+        # 규정집 기반 세부자산 상한선 세팅
         if '국내' in raw_cat and '주식' in raw_cat and '지수' in raw_cat: limit, asset_type, c_name = 30, '위험', '국내주식_지수'
         elif '국내' in raw_cat and '주식' in raw_cat and '섹터' in raw_cat: limit, asset_type, c_name = 15, '위험', '국내주식_섹터'
         elif '해외' in raw_cat and '주식' in raw_cat and '지수' in raw_cat: limit, asset_type, c_name = 30, '위험', '해외주식_지수'
@@ -46,14 +48,17 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
         elif '국내' in raw_cat and '채권' in raw_cat and '회사' in raw_cat: limit, asset_type, c_name = 30, '안전', '국내채권_회사채'
         elif '해외' in raw_cat and '채권' in raw_cat and '종합' in raw_cat: limit, asset_type, c_name = 50, '안전', '해외채권_종합'
         elif '해외' in raw_cat and '채권' in raw_cat and '회사' in raw_cat: limit, asset_type, c_name = 30, '안전', '해외채권_회사채'
-        elif '단기' in raw_cat or '금리' in raw_cat: limit, asset_type, c_name = 50, '안전', '단기채권'
+        elif '단기' in raw_cat or '금리' in raw_cat or '초단기' in raw_cat: limit, asset_type, c_name = 50, '안전', '단기채권'
         elif '채권' in raw_cat: limit, asset_type, c_name = 50, '안전', '기타_안전채권'
         elif '주식' in raw_cat: limit, asset_type, c_name = 10, '위험', '기타_위험주식'
         
         current_cat_alloc = cat_alloc.get(c_name, 0.0)
         available_cat = limit - current_cat_alloc
         
-        weight = min(total_budget, available_cat)
+        # --- [규정 핵심 반영] 총 남은 예산, 자산군 남은 한도, 그리고 '개별 종목 상한 20%' 중 최솟값 선택 ---
+        weight = min(total_budget, available_cat, 20.0)
+        
+        # 위험자산인 경우 위험자산 총 버젯(70%) 제약 추가 고려
         if asset_type == '위험':
             weight = min(weight, risk_budget)
             
@@ -69,6 +74,7 @@ def optimize_portfolio(df_predictions, target_col='Pred'):
             if asset_type == '위험': risk_budget -= weight
             cat_alloc[c_name] = current_cat_alloc + weight
 
+    # 남은 금액은 자동으로 현금 채움 (안전 자산)
     if total_budget > 0:
         portfolio.append({
             'ETF명': '현금보유 (Cash)', '카테고리': '현금', '자산군': '안전',
@@ -104,11 +110,9 @@ def run_full_analysis(df_raw, train_window_option):
     summary_results = []
     daily_records = []
     
-    # 패턴 추출을 위해 10년 치 데이터를 넉넉하게 가져옵니다.
     end_date = datetime.today().strftime('%Y-%m-%d')
     start_date = (datetime.today() - timedelta(days=365*10)).strftime('%Y-%m-%d')
 
-    # 사이드바 선택에 따른 가중치용 window 크기 지정
     if "1000" in train_window_option: fit_window = 1000
     elif "700" in train_window_option: fit_window = 700
     else: fit_window = 500
@@ -132,7 +136,6 @@ def run_full_analysis(df_raw, train_window_option):
             
             annual_std_dev = df_clean['Price_Change'].std() * np.sqrt(252) * 100
             
-            # --- [유저 아이디어 반영 1단계] 모멘텀 패턴 매핑은 '10년 전체 데이터' 기준 통계 사용 ---
             e1_map = df_clean.groupby('L1')['Next_Return'].mean().to_dict()
             e2_map = df_clean.groupby(['L1', 'L2'])['Next_Return'].mean().to_dict()
             e3_map = df_clean.groupby(['L1', 'L2', 'L3'])['Next_Return'].mean().to_dict()
@@ -143,7 +146,6 @@ def run_full_analysis(df_raw, train_window_option):
             df_clean['E3'] = df_clean.set_index(['L1', 'L2', 'L3']).index.map(e3_map.get).fillna(0.0)
             df_clean['E4'] = df_clean.set_index(['L1', 'L2', 'L3', 'L4']).index.map(e4_map.get).fillna(0.0)
             
-            # --- [유저 아이디어 반영 2단계] 다중 선형 회귀 분석은 '최근 고정 기간(500~1000일)'만 컷팅 ---
             actual_w = min(len(df_clean), fit_window)
             df_fit = df_clean.tail(actual_w)
             
@@ -155,7 +157,6 @@ def run_full_analysis(df_raw, train_window_option):
             best_intercept = coeffs[0]
             best_w1, best_w2, best_w3, best_w4 = coeffs[1:]
             
-            # 산출된 유연한 가중치를 전체에 투영하여 스코어링
             df_clean['Final_Pred'] = (best_intercept + df_clean['E1']*best_w1 + df_clean['E2']*best_w2 + df_clean['E3']*best_w3 + df_clean['E4']*best_w4) * 100
             df_clean['Actual'] = df_clean['Next_Return'] * 100
             
@@ -194,7 +195,7 @@ if os.path.exists(csv_filename):
 
     if df_raw is not None:
         df_analysis, df_daily = run_full_analysis(df_raw, train_window_option)
-        st.sidebar.success(f"📂 V28 하이브리드 엔진 적용 완료")
+        st.sidebar.success(f"📂 V29 규정 준수 엔진 세팅 완료")
         
         tab1, tab2, tab3, tab4 = st.tabs([
             "🎯 오늘의 실전 매수 비중", 
@@ -312,8 +313,8 @@ if os.path.exists(csv_filename):
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("현재 추세", row['현재추세'])
             c2.metric("내일 앙상블 기댓값", f"{row['앙상블 기댓값(%)']:.3f}%")
-            c3.metric("베이스 패턴 역사", "10년 전체")
-            c4.metric(f"최근 가중치 윈도우 ({train_window_option.split(' ')[0]}일 기준) 상관계수", f"{row['모델 상관계수']:.3f}")
+            c3.metric("단일 종목 규정 상한선", "최대 20.0%")
+            c4.metric(f"최근 가중치 윈도우 상관계수", f"{row['모델 상관계수']:.3f}")
             
             ticker_clean = str(row['종목코드']).replace('A', '')
             try:
