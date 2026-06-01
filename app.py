@@ -8,13 +8,13 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V31 - 당일 마감 데이터 강제 갱신 모델]")
-st.markdown("💡 **실시간 데이터 동기화:** 장 마감 후 최신 데이터가 반영되지 않을 때, 좌측 사이드바의 **'강제 갱신'** 버튼을 누르면 캐시를 삭제하고 오늘 종가를 즉시 새로 불러옵니다.")
+st.title("🥇 GAPS ETF 대시보드 [V32 - 오늘 자 데이터 강제 수집 모델]")
+st.markdown("💡 **데이터 수집 무결점화:** 당일 장 마감 데이터가 누락되는 현상을 막기 위해 수집 종료 날짜를 버퍼링하여 오늘 종가를 강제로 끌어오고, 사이드바에 실제 수집된 최신 날짜를 표시합니다.")
 
-# --- [신규 기능] 캐시 강제 초기화 버튼 ---
+# --- 캐시 강제 초기화 버튼 ---
 st.sidebar.header("🔄 데이터 동기화")
 if st.sidebar.button("🔄 최신 데이터 강제 갱신", type="primary", use_container_width=True):
-    st.cache_data.clear()  # 기존에 저장된 6시간짜리 과거 캐시를 전부 날려버림
+    st.cache_data.clear()  
     st.sidebar.success("⏳ 캐시가 초기화되었습니다! 최신 데이터를 다시 불러옵니다...")
     st.rerun()
 
@@ -118,17 +118,23 @@ def run_full_analysis(df_raw, train_window_option):
     summary_results = []
     daily_records = []
     
-    end_date = datetime.today().strftime('%Y-%m-%d')
+    # --- [핵심 수정] 종료일을 내일 날짜로 설정하여 데이터 서버가 오늘(6월1일) 데이터를 무조건 긁어오도록 강제 유도 ---
+    end_date = (datetime.today() + timedelta(days=1)).strftime('%Y-%m-%d')
     start_date = (datetime.today() - timedelta(days=365*10)).strftime('%Y-%m-%d')
 
     if "1000" in train_window_option: fit_window = 1000
     elif "700" in train_window_option: fit_window = 700
     else: fit_window = 500
 
+    actual_latest_date = "데이터 없음"
+
     for ticker, info in ticker_dict.items():
         try:
             df = fdr.DataReader(ticker, start_date, end_date)[['Close']].rename(columns={'Close': 'Price'})
             if len(df) < 40: continue
+
+            # 실제 수집된 데이터 중 가장 마지막 영업일 기록 보관 (모니터링용)
+            actual_latest_date = df.index[-1].strftime('%Y-%m-%d')
 
             df['Price_Change'] = df['Price'].pct_change()
             df['Dir'] = np.where(df['Price_Change'] > 0, 1, 0)
@@ -189,7 +195,7 @@ def run_full_analysis(df_raw, train_window_option):
             })
         except: pass
         
-    return pd.DataFrame(summary_results), pd.DataFrame(daily_records)
+    return pd.DataFrame(summary_results), pd.DataFrame(daily_records), actual_latest_date
 
 csv_filename = "gaps_etf_list.csv"
 
@@ -202,12 +208,16 @@ if os.path.exists(csv_filename):
         except: continue
 
     if df_raw is not None:
-        df_analysis, df_daily = run_full_analysis(df_raw, train_window_option)
+        df_analysis, df_daily, latest_market_date = run_full_analysis(df_raw, train_window_option)
+        
+        # 사이드바에 실제 크롤링된 주가의 최신 마감일 모니터링 표시
+        st.sidebar.markdown("---")
+        st.sidebar.info(f"📅 **서버 수집 완료 최신 데이터 날짜:**\n`{latest_market_date}`")
         
         tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "🎯 오늘의 실전 매수 비중", 
             "🏆 섹터별 기댓값 TOP 3", 
-            "🔥 타임머신 백테스트 (상세내역)", 
+            "🔥 캘린더 연동 백테스트", 
             "🔍 개별 종목 분석",
             "📝 나의 실전 매매 기록장"
         ])
@@ -337,37 +347,24 @@ if os.path.exists(csv_filename):
 
         with tab5:
             st.subheader("📝 나의 실전 매매 기록장 (Excel 스타일)")
-            st.markdown("""
-            💡 **사용 방법:**
-            1. 표 맨 아래 빈 행에 **매매일자, 실제 거둔 계좌수익률, 메모**를 적습니다.
-            2. 새로운 행이 필요하면 표 하단의 **`+ Add row`** 버튼을 누르세요.
-            3. 입력을 모두 마친 후 꼭 아래 **`💾 실전 매매 기록 저장하기`** 버튼을 눌러야 영구 보관됩니다!
-            """)
-            
             df_user_log = pd.read_csv(log_filename)
-            edited_user_df = st.data_editor(
-                df_user_log, 
-                num_rows="dynamic", 
-                use_container_width=True
-            )
+            edited_user_df = st.data_editor(df_user_log, num_rows="dynamic", use_container_width=True)
             
             if st.button("💾 실전 매매 기록 저장하기", type="primary"):
                 try:
                     edited_user_df.to_csv(log_filename, index=False, encoding='utf-8-sig')
-                    st.success("🎉 기록이 `actual_trade_history.csv` 파일에 안전하게 영구 저장되었습니다!")
+                    st.success("🎉 기록이 성공적으로 보관되었습니다.")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"⚠️ 저장 중 오류 발생: {e}")
+                    st.error(f"⚠️ 저장 오류: {e}")
                     
             if len(edited_user_df) > 1:
                 st.divider()
-                st.subheader("📈 내가 기록한 실제 계좌 수익률 추이")
                 try:
                     df_chart_user = edited_user_df.copy()
                     df_chart_user['나의 실제 계좌수익률(%)'] = pd.to_numeric(df_chart_user['나의 실제 계좌수익률(%)']).fillna(0.0)
                     df_chart_user = df_chart_user.sort_values(by='매매일자').set_index('매매일자')
                     st.line_chart(df_chart_user[['나의 실제 계좌수익률(%)']])
-                except:
-                    pass
+                except: pass
 else:
     st.sidebar.error(f"❌ `{csv_filename}` 파일을 찾을 수 없습니다.")
