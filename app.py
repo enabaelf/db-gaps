@@ -335,7 +335,7 @@ if os.path.exists(csv_filename):
                         df_pivot = df_hist.pivot(index='날짜', columns='ETF명', values='비중(%)').fillna(0)
                         
                         # 비중이 높은 곳은 진한 파란색, 낮은 곳은 연한 파란색으로 칠해서 가독성 극대화
-                        st.dataframe(df_pivot.style.format("{:.1f}%").background_gradient(cmap='Blues', axis=None), use_container_width=True)
+                        st.dataframe(df_pivot.style.format("{:.1f}%"), use_container_width=True)
                     # -----------------------------------------------------
 
                     st.markdown(f"### 🔍 기준일({dates_list[-1]}) 최종 포트폴리오 상세 내역")
