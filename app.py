@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V33 - 최신 장 마감 데이터 완벽 반영 모델]")
-st.markdown("💡 **구조적 버그 수정 완료:** 당일 종가가 연산 과정에서 누락되던 shift 공식을 전면 전향 수정하여, 오늘 마감된 데이터가 실시간 백테스트와 내일 기댓값 계산에 완벽히 반영됩니다.")
+st.title("🥇 GAPS ETF 대시보드 [V34 - 리밸런싱 액션 플랜 탑재]")
+st.markdown("💡 **내일 아침 매매 지침 제공:** 나의 현재 포트폴리오를 입력하면 모델의 기댓값 기반 최적 포트폴리오와 비교하여 내일 아침 장 시작 시점의 구체적인 매수/매도 지시를 내립니다.")
 
 # --- 캐시 강제 초기화 버튼 ---
 st.sidebar.header("🔄 데이터 동기화")
@@ -17,13 +17,6 @@ if st.sidebar.button("🔄 최신 데이터 강제 갱신", type="primary", use_
     st.cache_data.clear()  
     st.sidebar.success("⏳ 캐시가 초기화되었습니다! 최신 데이터를 다시 불러옵니다...")
     st.rerun()
-
-# --- 수동 기록장용 파일 초기화 로직 ---
-log_filename = "actual_trade_history.csv"
-if not os.path.exists(log_filename):
-    df_log_init = pd.DataFrame(columns=['매매일자', '나의 실제 계좌수익률(%)', '당일 주력 매수 종목', '투자 복기 및 메모'])
-    df_log_init.loc[0] = [(datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d'), 0.0, "현금 보유", "기록장 시동! 여기에 어제 기록을 적으세요."]
-    df_log_init.to_csv(log_filename, index=False, encoding='utf-8-sig')
 
 # --- 좌측 사이드바 설정 ---
 st.sidebar.header("⚙️ 앙상블 모델 설정")
@@ -118,7 +111,6 @@ def run_full_analysis(df_raw, train_window_option):
     summary_results = []
     daily_records = []
     
-    # 10년치 데이터를 수집하되, end_date를 생략하여 제공 서버가 가진 완전한 최신 데이터를 제한없이 가져옴
     start_date = (datetime.today() - timedelta(days=365*10)).strftime('%Y-%m-%d')
 
     if "1000" in train_window_option: fit_window = 1000
@@ -137,12 +129,11 @@ def run_full_analysis(df_raw, train_window_option):
             df['Price_Change'] = df['Price'].pct_change()
             df['Dir'] = np.where(df['Price_Change'] > 0, 1, 0)
             
-            # [버그 수정의 핵심] Target을 밀지 않고 과거 Feature 패턴들을 뒤로 Shift하여 데이터 일치화
-            df['Target_Return'] = df['Price_Change']  # 당일 수익률 자체를 타겟화
-            df['L1'] = df['Dir'].shift(1)             # 1영업일 전 방향
-            df['L2'] = df['Dir'].shift(2)             # 2영업일 전 방향
-            df['L3'] = df['Dir'].shift(3)             # 3영업일 전 방향
-            df['L4'] = df['Dir'].shift(4)             # 4영업일 전 방향
+            df['Target_Return'] = df['Price_Change']  
+            df['L1'] = df['Dir'].shift(1)             
+            df['L2'] = df['Dir'].shift(2)             
+            df['L3'] = df['Dir'].shift(3)             
+            df['L4'] = df['Dir'].shift(4)             
             
             df_clean = df.dropna(subset=['L4', 'Target_Return']).copy()
             if len(df_clean) < 100: continue
@@ -176,14 +167,12 @@ def run_full_analysis(df_raw, train_window_option):
             final_correlation = df_clean['Final_Pred'].corr(df_clean['Actual'])
             if pd.isna(final_correlation): final_correlation = 0.0
             
-            # 오늘 장 마감 데이터(6월 1일)까지 누락 없이 일지 기록 확보
             for date, row in df_clean.tail(60).iterrows():
                 daily_records.append({
                     'Date': date.strftime('%Y-%m-%d'), 'ETF명': info['name'], '카테고리': info['category'],
                     'Pred': row['Final_Pred'], 'Actual': row['Actual']
                 })
 
-            # 오늘 장 마감 데이터를 기준으로 한 '완전한 내일 장세(Next Day)' 예측 기댓값 도출
             next_L1 = df['Dir'].iloc[-1]
             next_L2 = df['Dir'].iloc[-2]
             next_L3 = df['Dir'].iloc[-3]
@@ -221,6 +210,10 @@ if os.path.exists(csv_filename):
     if df_raw is not None:
         df_analysis, df_daily, latest_market_date = run_full_analysis(df_raw, train_window_option)
         
+        # 오늘 자 최적화 포트폴리오를 공통으로 미리 계산 (여러 탭에서 사용)
+        df_pred_today = df_analysis.rename(columns={'앙상블 기댓값(%)': 'Pred'})
+        optimal_portfolio = optimize_portfolio(df_pred_today, target_col='Pred')
+
         st.sidebar.markdown("---")
         st.sidebar.info(f"📅 **서버 수집 완료 최신 데이터 날짜:**\n`{latest_market_date}`")
         
@@ -229,13 +222,11 @@ if os.path.exists(csv_filename):
             "🏆 섹터별 기댓값 TOP 3", 
             "🔥 캘린더 연동 백테스트", 
             "🔍 개별 종목 분석",
-            "📝 나의 실전 매매 기록장"
+            "💼 내일 아침 매매 디렉션"
         ])
 
         with tab1:
             st.subheader("🎯 오늘 자 최적화 포트폴리오 비중")
-            df_pred_today = df_analysis.rename(columns={'앙상블 기댓값(%)': 'Pred'})
-            optimal_portfolio = optimize_portfolio(df_pred_today, target_col='Pred')
             
             risk_sum = float(optimal_portfolio[optimal_portfolio['자산군'] == '위험']['추천비중(%)'].sum())
             safe_sum = float(optimal_portfolio[optimal_portfolio['자산군'] == '안전']['추천비중(%)'].sum())
@@ -354,25 +345,72 @@ if os.path.exists(csv_filename):
                 st.error(f"⚠️ 차트 로드 실패: {e}")
 
         with tab5:
-            st.subheader("📝 나의 실전 매매 기록장 (Excel 스타일)")
-            df_user_log = pd.read_csv(log_filename)
-            edited_user_df = st.data_editor(df_user_log, num_rows="dynamic", use_container_width=True)
+            st.subheader("💼 내 포트폴리오 내일 아침 액션 플랜")
+            st.markdown("현재 내가 보유 중인 종목과 비중을 입력하면, AI 모델이 도출한 최적의 비중과 비교하여 **내일 시가에 사고팔아야 할 명확한 행동 지침**을 제공합니다.")
+
+            all_etf_names = df_analysis['ETF명'].tolist() + ['현금보유 (Cash)']
             
-            if st.button("💾 실전 매매 기록 저장하기", type="primary"):
-                try:
-                    edited_user_df.to_csv(log_filename, index=False, encoding='utf-8-sig')
-                    st.success("🎉 기록이 성공적으로 보관되었습니다.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"⚠️ 저장 오류: {e}")
+            selected_holdings = st.multiselect("📌 1. 현재 계좌에 보유 중인 종목을 모두 선택하세요:", all_etf_names)
+
+            if selected_holdings:
+                st.markdown("📌 **2. 보유 종목의 현재 비중(%)을 입력하세요 (총합 100%):**")
+                
+                # 입력용 DataFrame 초기화
+                df_input = pd.DataFrame({
+                    "ETF명": selected_holdings,
+                    "현재 비중(%)": [100.0 / len(selected_holdings)] * len(selected_holdings)
+                })
+                
+                edited_holdings = st.data_editor(df_input, use_container_width=True, hide_index=True)
+                total_weight = edited_holdings["현재 비중(%)"].sum()
+                
+                if abs(total_weight - 100.0) > 0.1:
+                    st.warning(f"⚠️ 현재 비중의 총합이 {total_weight:.1f}% 입니다. 100%에 맞게 조정해 주세요.")
+                else:
+                    st.success("✅ 비중 확인 완료! 아래에 내일 아침 리밸런싱 지시사항이 생성되었습니다.")
+                    st.divider()
+                    st.markdown("### 🚨 내일 아침 장 시작 시 매매 디렉션")
                     
-            if len(edited_user_df) > 1:
-                st.divider()
-                try:
-                    df_chart_user = edited_user_df.copy()
-                    df_chart_user['나의 실제 계좌수익률(%)'] = pd.to_numeric(df_chart_user['나의 실제 계좌수익률(%)']).fillna(0.0)
-                    df_chart_user = df_chart_user.sort_values(by='매매일자').set_index('매매일자')
-                    st.line_chart(df_chart_user[['나의 실제 계좌수익률(%)']])
-                except: pass
+                    # 목표 비중 매핑
+                    target_weights = optimal_portfolio.set_index('ETF명')['추천비중(%)'].to_dict()
+                    current_weights = edited_holdings.set_index('ETF명')['현재 비중(%)'].to_dict()
+                    
+                    all_keys = set(target_weights.keys()).union(set(current_weights.keys()))
+                    
+                    action_plan = []
+                    for etf in all_keys:
+                        curr_w = current_weights.get(etf, 0.0)
+                        tgt_w = target_weights.get(etf, 0.0)
+                        diff = tgt_w - curr_w
+                        
+                        if abs(diff) < 0.1:
+                            action = "유지 (Hold) ⏸️"
+                        elif diff > 0:
+                            action = "매수 (Buy) 🟢"
+                        else:
+                            action = "매도 (Sell) 🔴"
+                            
+                        action_plan.append({
+                            "ETF 종목명": etf,
+                            "현재 내 비중(%)": curr_w,
+                            "모델 목표 비중(%)": tgt_w,
+                            "조정 필요 비중(%)": diff,
+                            "행동 지침": action
+                        })
+                        
+                    df_actions = pd.DataFrame(action_plan)
+                    
+                    # 가독성을 위해 매도(비중 축소)부터 매수(비중 확대) 순으로 정렬
+                    df_actions = df_actions.sort_values(by="조정 필요 비중(%)")
+                    
+                    # '유지'인 항목은 제외하고 실제 액션이 필요한 것만 강조해서 보여주기
+                    st.dataframe(df_actions.style.format({
+                        "현재 내 비중(%)": "{:.1f}%",
+                        "모델 목표 비중(%)": "{:.1f}%",
+                        "조정 필요 비중(%)": "{:+.1f}%"
+                    }).applymap(
+                        lambda x: "color: red;" if "Sell" in x else ("color: green;" if "Buy" in x else "color: gray;"), 
+                        subset=["행동 지침"]
+                    ), use_container_width=True)
 else:
     st.sidebar.error(f"❌ `{csv_filename}` 파일을 찾을 수 없습니다.")
