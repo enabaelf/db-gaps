@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS ETF 투자 대회 대시보드")
 
-st.title("🥇 GAPS ETF 대시보드 [V35 - 내일 아침 액션 플랜 & 에러 패치]")
-st.markdown("💡 **Pandas 최신 버전 완벽 호환:** Streamlit 클라우드 환경의 최신 라이브러리 충돌 에러(`applymap` 이슈)를 해결하여 안정성을 극대화했습니다.")
+st.title("🥇 GAPS 실전 대시보드 [V36 - 액션 플랜 카테고리 추가]")
+st.markdown("💡 **내일 아침 매매 지침 강화:** 리밸런싱 지시사항에 각 종목이 속한 '카테고리(자산군/섹터)'를 추가하여 직관성을 높였습니다.")
 
 # --- 캐시 강제 초기화 버튼 ---
 st.sidebar.header("🔄 데이터 동기화")
@@ -371,6 +371,10 @@ if os.path.exists(csv_filename):
                     st.divider()
                     st.markdown("### 🚨 내일 아침 장 시작 시 매매 디렉션")
                     
+                    # [추가] 종목별 카테고리 매핑 생성
+                    category_map = df_analysis.set_index('ETF명')['카테고리'].to_dict()
+                    category_map['현금보유 (Cash)'] = '현금'
+                    
                     # 목표 비중 매핑
                     target_weights = optimal_portfolio.set_index('ETF명')['추천비중(%)'].to_dict()
                     current_weights = edited_holdings.set_index('ETF명')['현재 비중(%)'].to_dict()
@@ -382,6 +386,7 @@ if os.path.exists(csv_filename):
                         curr_w = current_weights.get(etf, 0.0)
                         tgt_w = target_weights.get(etf, 0.0)
                         diff = tgt_w - curr_w
+                        cat = category_map.get(etf, "알 수 없음") # 카테고리 정보 가져오기
                         
                         if abs(diff) < 0.1:
                             action = "유지 (Hold) ⏸️"
@@ -391,6 +396,7 @@ if os.path.exists(csv_filename):
                             action = "매도 (Sell) 🔴"
                             
                         action_plan.append({
+                            "카테고리": cat,
                             "ETF 종목명": etf,
                             "현재 내 비중(%)": curr_w,
                             "모델 목표 비중(%)": tgt_w,
@@ -403,7 +409,7 @@ if os.path.exists(csv_filename):
                     # 가독성을 위해 매도(비중 축소)부터 매수(비중 확대) 순으로 정렬
                     df_actions = df_actions.sort_values(by="조정 필요 비중(%)")
                     
-                    # [핵심 수정 부분] Pandas 2.1.0 이상 버전 호환을 위해 applymap을 map으로 수정
+                    # Pandas 2.1.0 이상 버전 호환 (applymap -> map)
                     st.dataframe(df_actions.style.format({
                         "현재 내 비중(%)": "{:.1f}%",
                         "모델 목표 비중(%)": "{:.1f}%",
