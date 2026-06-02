@@ -278,11 +278,23 @@ if os.path.exists(csv_filename):
                     
                     daily_model_returns, daily_market_returns, daily_max_returns, dates_list = [], [], [], []
                     target_date_portfolio = None 
+                    portfolio_history = [] # 💡 과거 매매 내역 기록용 리스트 추가
                     
                     for d in unique_dates:
                         df_d = df_period[df_period['Date'] == d]
                         
                         past_portfolio = optimize_portfolio(df_d, target_col='Pred')
+                        
+                        # --- 💡 핵심: 매일매일 모델이 담았던 종목과 비중을 기록 ---
+                        for _, p_row in past_portfolio.iterrows():
+                            if p_row['추천비중(%)'] > 0:
+                                portfolio_history.append({
+                                    '날짜': d,
+                                    'ETF명': p_row['ETF명'],
+                                    '비중(%)': p_row['추천비중(%)']
+                                })
+                        # -----------------------------------------------------
+                        
                         daily_port_return = float((past_portfolio['추천비중(%)'] / 100 * past_portfolio['실제수익률(%)'].fillna(0)).sum())
                         daily_model_returns.append(daily_port_return / 100)
                         
@@ -315,7 +327,18 @@ if os.path.exists(csv_filename):
                     }, index=dates_list)
                     st.line_chart(df_chart, use_container_width=True)
 
-                    st.markdown(f"### 🔍 기준일({dates_list[-1]})의 포트폴리오 매매 상세 내역")
+                    # --- 💡 추가된 부분: 일자별 매매 히스토리 표 출력 ---
+                    st.markdown("### 📜 시뮬레이션 기간 내 일자별 종목 비중(%) 변화 흐름")
+                    if portfolio_history:
+                        df_hist = pd.DataFrame(portfolio_history)
+                        # 날짜를 세로(행), ETF명을 가로(열)로 펼쳐서 한눈에 보이게 피벗 처리
+                        df_pivot = df_hist.pivot(index='날짜', columns='ETF명', values='비중(%)').fillna(0)
+                        
+                        # 비중이 높은 곳은 진한 파란색, 낮은 곳은 연한 파란색으로 칠해서 가독성 극대화
+                        st.dataframe(df_pivot.style.format("{:.1f}%").background_gradient(cmap='Blues', axis=None), use_container_width=True)
+                    # -----------------------------------------------------
+
+                    st.markdown(f"### 🔍 기준일({dates_list[-1]}) 최종 포트폴리오 상세 내역")
                     if target_date_portfolio is not None:
                         st.dataframe(target_date_portfolio.style.format({
                             '추천비중(%)': '{:.1f}%', 
