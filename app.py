@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 # 웹페이지 기본 설정
 st.set_page_config(layout="wide", page_title="GAPS 주도주 패턴 확률 대시보드")
 
-st.title("🥇 GAPS 앙상블 대시보드 [V41 - 10개년 빈도/확률 기반 버전]")
-st.markdown("💡 **시스템 안내:** 수익률 수치 대신 **10년 치 데이터**에서 '전일 대비 3일/4일 연속 패턴'을 분석하여 통상적으로 상승이 많았는지(확률 50% 초과) 기반으로 방향을 결정합니다.")
+st.title("🥇 GAPS 앙상블 대시보드 [V41]")
+st.markdown("💡 **시스템 안내:** ")
 
 # --- 캐시 강제 초기화 버튼 ---
 st.sidebar.header("🔄 데이터 동기화")
